@@ -43,13 +43,16 @@ The workflow in `.github/workflows/sync-to-hf.yml` pushes this repo to
   runtime, Telegram, backup and keep-awake.
 - Click **Open Terminal** or **ENV Builder**, and unlock with the
   `GATEWAY_TOKEN` value you set in step 2.
-- The container runs `hermes setup --non-interactive` automatically on
-  boot using your secrets. If the installed Hermes CLI version expects
-  different flags, finish setup from **Open Hermes Agent** or
-  **Open Terminal** (`hermes setup`), then click **Restart agent** in
-  ENV Builder.
+- On boot, the container writes your `LLM_MODEL` / `LLM_API_KEY` and
+  Telegram secrets into `~/.hermes/.env` and runs `hermes config set` to
+  select the model and provider. The gateway then starts with
+  `hermes gateway run`, which talks to Telegram via long-polling — your bot
+  should come online within seconds of the Space starting. If anything
+  looks off, check `data/hermes-setup.log` or finish configuration from
+  **Open Hermes Agent** or **Open Terminal** (`hermes config`, `hermes
+  model`), then click **Restart agent** in ENV Builder.
 
-## 5. Cloudflare Worker (Telegram proxy + keep-awake)
+## 5. Cloudflare Worker (keep-awake)
 
 See `cloudflare/README.md`. Summary:
 
@@ -57,14 +60,13 @@ See `cloudflare/README.md`. Summary:
 cd cloudflare
 export CLOUDFLARE_API_TOKEN=<CLOUDFLARE_WORKERS_TOKEN value>
 npx wrangler deploy
-npx wrangler secret put SPACE_URL                # https://<owner>-<space>.hf.space
-npx wrangler secret put GATEWAY_TOKEN            # same as the Space secret
-npx wrangler secret put TELEGRAM_WEBHOOK_SECRET  # openssl rand -hex 20
-
-curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
-  -d "url=https://hermes-agent-proxy.<your-subdomain>.workers.dev/telegram" \
-  -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}"
+npx wrangler secret put SPACE_URL  # https://<owner>-<space>.hf.space
 ```
+
+The Telegram gateway uses long-polling, so the only thing the Worker needs
+to do is keep the Space awake. The `GATEWAY_TOKEN` /
+`TELEGRAM_WEBHOOK_SECRET` secrets and the `setWebhook` call are only needed
+for the optional Telegram webhook proxy mode — see `cloudflare/README.md`.
 
 ## 6. Backups
 

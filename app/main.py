@@ -218,6 +218,11 @@ async def env_builder_restart(request: Request):
 
 # --------------------------------------------------------------------------
 # Gateway reverse proxy (Bearer GATEWAY_TOKEN required)
+#
+# By default `hermes gateway run` talks to Telegram via long-polling and
+# opens no port, so these routes have nothing to proxy to. They only become
+# useful if you manually switch Hermes to webhook mode (TELEGRAM_WEBHOOK_URL
+# / TELEGRAM_WEBHOOK_PORT, see the Hermes Agent docs) pointed at GATEWAY_PORT.
 # --------------------------------------------------------------------------
 @app.api_route("/gateway/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def gateway_proxy(path: str, request: Request):
@@ -227,7 +232,7 @@ async def gateway_proxy(path: str, request: Request):
 
 
 # --------------------------------------------------------------------------
-# Telegram webhook (forwarded by the Cloudflare Worker proxy)
+# Telegram webhook (optional, for the Cloudflare Worker proxy in webhook mode)
 # --------------------------------------------------------------------------
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):

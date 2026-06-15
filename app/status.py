@@ -1,14 +1,12 @@
 """Collects the data shown on the landing page status cards."""
+import asyncio
 import json
 import os
 import shutil
 import time
 from pathlib import Path
 
-import httpx
-
 START_TIME = time.time()
-GATEWAY_PORT = int(os.environ.get("GATEWAY_PORT", "8642"))
 APP_PORT = int(os.environ.get("PORT", "7860"))
 BACKUP_STATE_FILE = Path(os.environ.get("BACKUP_STATE_FILE", "/home/user/app/data/backup_state.json"))
 
@@ -27,16 +25,22 @@ def _format_duration(seconds: float) -> str:
 
 
 async def gateway_status() -> dict:
+    # `hermes gateway run` uses Telegram long-polling and opens no port, so
+    # liveness is checked via the process itself rather than an HTTP probe.
     online = False
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(f"http://127.0.0.1:{GATEWAY_PORT}/health")
-            online = resp.status_code < 500
+        proc = await asyncio.create_subprocess_exec(
+            "pgrep", "-f", "hermes gateway",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.wait()
+        online = proc.returncode == 0
     except Exception:
         online = False
     return {
         "online": online,
-        "port": GATEWAY_PORT,
+        "telegram_configured": bool(os.environ.get("TELEGRAM_BOT_TOKEN")),
         "protected": bool(os.environ.get("GATEWAY_TOKEN")),
     }
 

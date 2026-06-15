@@ -1,10 +1,16 @@
-# Cloudflare Worker: Telegram proxy + keep-awake
+# Cloudflare Worker: keep-awake + optional Telegram webhook proxy
 
 This Worker does two things for the Hermes Agent Space:
 
-1. Proxies Telegram webhook updates to the Space, attaching the
-   `GATEWAY_TOKEN` bearer header that Telegram itself can't send.
-2. Pings `/health` on a cron schedule so a free-tier Space stays awake.
+1. **Keep-awake (primary)**: pings `/health` on a cron schedule so a
+   free-tier Space stays awake. The Telegram gateway uses long-polling, so
+   the container needs to stay running for the bot to keep responding.
+2. **Telegram webhook proxy (optional/advanced)**: if you've manually
+   switched Hermes to webhook mode (`TELEGRAM_WEBHOOK_URL` /
+   `TELEGRAM_WEBHOOK_PORT`, see the Hermes Agent docs) instead of the
+   default long-polling, this proxies Telegram's webhook updates to the
+   Space, attaching the `GATEWAY_TOKEN` bearer header that Telegram itself
+   can't send. Not needed for the default setup.
 
 ## Prerequisites
 
@@ -29,7 +35,12 @@ This publishes the worker to
 ```bash
 npx wrangler secret put SPACE_URL
 # -> https://<owner>-<space>.hf.space   (no trailing slash)
+```
 
+The `GATEWAY_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` secrets are only needed if
+you're using the optional Telegram webhook proxy below.
+
+```bash
 npx wrangler secret put GATEWAY_TOKEN
 # -> same value as the Space's GATEWAY_TOKEN secret
 
@@ -37,9 +48,10 @@ npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
 # -> any random string, e.g. `openssl rand -hex 20`
 ```
 
-## Point Telegram at the worker
+## (Optional) Point Telegram at the worker for webhook mode
 
-Register the webhook with Telegram, using the same
+Only needed if you've configured Hermes for webhook mode instead of the
+default long-polling. Register the webhook with Telegram, using the same
 `TELEGRAM_WEBHOOK_SECRET` value as the `secret_token`:
 
 ```bash

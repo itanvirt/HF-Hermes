@@ -21,9 +21,10 @@ on the free CPU tier, with:
 - **Open Hermes Agent** — the Hermes CLI in your browser
 - **Open Terminal** — full shell access to the container
 - **ENV Builder** — view/edit runtime configuration without redeploying
-- a protected gateway API for Telegram (via a Cloudflare Worker proxy)
+- a Telegram bot via the Hermes messaging gateway (long-polling, no inbound
+  webhook required)
 - automatic backups of agent state to a private Hugging Face dataset
-- a keep-awake cron so the free Space doesn't go to sleep
+- a Cloudflare Worker keep-awake cron so the free Space doesn't go to sleep
 
 ## Quickstart: duplicate this Space
 
@@ -33,8 +34,8 @@ on the free CPU tier, with:
 4. Visit `/env-builder` (unlock with your `GATEWAY_TOKEN`) to confirm
    everything is configured, or `/terminal` to run `hermes setup`
    interactively if anything needs adjusting.
-5. (Optional) Deploy the Cloudflare Worker in `cloudflare/` for the
-   Telegram webhook proxy and keep-awake cron — see `cloudflare/README.md`.
+5. (Optional) Deploy the Cloudflare Worker in `cloudflare/` to keep the free
+   Space awake — see `cloudflare/README.md`.
 
 ## Required secrets
 
@@ -44,10 +45,10 @@ after) duplicating:
 | Secret | Description |
 | --- | --- |
 | `HF_TOKEN` | Hugging Face token (write access) — used for the automatic backup dataset. |
-| `CLOUDFLARE_WORKERS_TOKEN` | Cloudflare API token used to deploy the Telegram/keep-awake Worker. |
+| `CLOUDFLARE_WORKERS_TOKEN` | Cloudflare API token used to deploy the keep-awake Worker. |
 | `TELEGRAM_ALLOWED_USERS` | Comma-separated Telegram user IDs allowed to message the agent. |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from `@BotFather`. |
-| `GATEWAY_TOKEN` | Shared secret protecting the gateway API, terminal and ENV Builder. Use a long random string. |
+| `GATEWAY_TOKEN` | Shared secret protecting the terminal and ENV Builder. Use a long random string. |
 | `LLM_MODEL` | Model identifier, e.g. `gemini-2.5-flash` (good free-tier default). |
 | `LLM_API_KEY` | API key for the provider implied by `LLM_MODEL`. |
 
