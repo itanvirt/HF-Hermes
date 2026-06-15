@@ -1,6 +1,6 @@
 ---
 title: Hermes Agent
-emoji: 🜂
+emoji: 🤖
 colorFrom: gray
 colorTo: green
 sdk: docker
