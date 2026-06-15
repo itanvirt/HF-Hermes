@@ -12,8 +12,9 @@ Settings → Variables and secrets → **New secret** for each of:
 
 - `HF_TOKEN` — create one at https://huggingface.co/settings/tokens with
   **write** access (needed to create/update the `hermes-backup` dataset).
-- `CLOUDFLARE_WORKERS_TOKEN` — Cloudflare API token with
-  "Edit Cloudflare Workers" permission.
+- `CLOUDFLARE_WORKERS_TOKEN` — (optional/advanced) Cloudflare API token with
+  "Edit Cloudflare Workers" permission, only needed for the alternative
+  Worker in `cloudflare/`. Keep-awake works without it (see step 5).
 - `TELEGRAM_ALLOWED_USERS` — your Telegram numeric user ID(s),
   comma-separated. Get yours from `@userinfobot` on Telegram.
 - `TELEGRAM_BOT_TOKEN` — from `@BotFather` (`/newbot`).
@@ -37,6 +38,11 @@ The workflow in `.github/workflows/sync-to-hf.yml` pushes this repo to
    `.github/workflows/sync-to-hf.yml`.
 4. Push to `main` (or run the workflow manually from the Actions tab).
 
+This step also enables keep-awake automatically: once `main` is set up,
+`.github/workflows/keep-awake.yml` pings your Space's `/health` endpoint
+every 15 minutes — no further setup. If your Space has a different
+owner/name, edit `SPACE_URL` in that workflow too.
+
 ## 4. First boot
 
 - Open the Space. The dashboard shows live status for the gateway, model,
@@ -52,21 +58,12 @@ The workflow in `.github/workflows/sync-to-hf.yml` pushes this repo to
   **Open Hermes Agent** or **Open Terminal** (`hermes config`, `hermes
   model`), then click **Restart agent** in ENV Builder.
 
-## 5. Cloudflare Worker (keep-awake)
+## 5. (Optional/advanced) Cloudflare Worker
 
-See `cloudflare/README.md`. Summary:
-
-```bash
-cd cloudflare
-export CLOUDFLARE_API_TOKEN=<CLOUDFLARE_WORKERS_TOKEN value>
-npx wrangler deploy
-npx wrangler secret put SPACE_URL  # https://<owner>-<space>.hf.space
-```
-
-The Telegram gateway uses long-polling, so the only thing the Worker needs
-to do is keep the Space awake. The `GATEWAY_TOKEN` /
-`TELEGRAM_WEBHOOK_SECRET` secrets and the `setWebhook` call are only needed
-for the optional Telegram webhook proxy mode — see `cloudflare/README.md`.
+Keep-awake is already handled by step 3's GitHub Actions cron — nothing
+more to do. `cloudflare/` has an alternative Worker for people who'd
+rather not rely on GitHub Actions, and/or who want the optional Telegram
+webhook proxy mode. See `cloudflare/README.md` if you want it.
 
 ## 6. Backups
 

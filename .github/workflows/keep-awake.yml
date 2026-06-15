@@ -1,0 +1,15 @@
+name: Keep Space awake
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Space health endpoint
+        env:
+          SPACE_URL: https://itanvirt-hf-hermes.hf.space
+        run: curl -fsS "$SPACE_URL/health"

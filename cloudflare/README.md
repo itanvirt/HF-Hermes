@@ -1,10 +1,14 @@
-# Cloudflare Worker: keep-awake + optional Telegram webhook proxy
+# Cloudflare Worker (optional, advanced)
 
-This Worker does two things for the Hermes Agent Space:
+**You probably don't need this.** Keep-awake is already handled for free by
+`.github/workflows/keep-awake.yml`, which pings `/health` every 15 minutes
+with zero extra setup. This Worker is an alternative for people who'd
+rather not depend on GitHub Actions, and/or who want the optional Telegram
+webhook proxy:
 
-1. **Keep-awake (primary)**: pings `/health` on a cron schedule so a
-   free-tier Space stays awake. The Telegram gateway uses long-polling, so
-   the container needs to stay running for the bot to keep responding.
+1. **Keep-awake**: pings `/health` on a cron schedule so a free-tier Space
+   stays awake. The Telegram gateway uses long-polling, so the container
+   needs to stay running for the bot to keep responding.
 2. **Telegram webhook proxy (optional/advanced)**: if you've manually
    switched Hermes to webhook mode (`TELEGRAM_WEBHOOK_URL` /
    `TELEGRAM_WEBHOOK_PORT`, see the Hermes Agent docs) instead of the

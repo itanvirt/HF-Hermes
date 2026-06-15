@@ -100,9 +100,10 @@ def keep_awake_status() -> dict:
     worker_url = os.environ.get("CF_WORKER_URL", "")
     space_host = os.environ.get("SPACE_HOST", "")
     target = f"https://{space_host}/health" if space_host else "<your-space>.hf.space/health"
+    via = "Cloudflare Worker cron" if worker_url else "GitHub Actions cron (every 15 min)"
     return {
-        "configured": bool(worker_url),
-        "via": "CF Cron",
+        "configured": True,
+        "via": via,
         "target": target,
     }
 
