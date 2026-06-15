@@ -57,7 +57,7 @@ chmod 600 "$HERMES_HOME/.env"
 # ("Open Hermes Agent" / "Open Terminal" -> `hermes config` / `hermes model`).
 if command -v hermes >/dev/null 2>&1 && [ -n "${LLM_MODEL:-}" ]; then
     {
-        hermes config set model "${LLM_MODEL}"
+        hermes config set model.default "${LLM_MODEL}"
         hermes config set model.provider "${HERMES_PROVIDER}"
     } >/home/user/app/data/hermes-setup.log 2>&1 || \
         echo "[configure_hermes] 'hermes config set' did not complete; configure manually via the in-browser terminal." \
