@@ -1,0 +1,7 @@
+name = "hermes-agent-proxy"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+
+# Ping the Space every 10 minutes to keep a free-tier Space awake.
+[triggers]
+crons = ["*/10 * * * *"]
