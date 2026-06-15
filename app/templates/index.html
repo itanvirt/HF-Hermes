@@ -35,7 +35,7 @@
                     </span>
                     <div style="margin-top:10px;">
                         {% if status.gateway.online %}
-                            Telegram long-polling
+                            {{ status.telegram.via }}
                         {% elif status.gateway.telegram_configured %}
                             Not running (check gateway logs)
                         {% else %}

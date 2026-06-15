@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs the Hermes Agent messaging gateway (Telegram long-polling).
+# Runs the Hermes Agent messaging gateway (Telegram long-polling, or
+# webhook mode if TELEGRAM_MODE=webhook - see configure_hermes.sh).
 # If no Telegram bot token is configured, idles instead of crash-looping
 # under supervisord.
 set -uo pipefail
@@ -14,5 +15,9 @@ if ! command -v hermes >/dev/null 2>&1; then
     exec sleep infinity
 fi
 
-echo "[hermes-gateway] starting (Telegram long-polling)"
+if [ "${TELEGRAM_MODE:-}" = "webhook" ]; then
+    echo "[hermes-gateway] starting (Telegram webhook mode, listening on port ${GATEWAY_PORT:-8642})"
+else
+    echo "[hermes-gateway] starting (Telegram long-polling)"
+fi
 exec hermes gateway run

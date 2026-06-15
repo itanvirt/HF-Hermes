@@ -55,6 +55,23 @@ The workflow in `.github/workflows/sync-to-hf.yml` pushes this repo to
   **Open Hermes Agent** or **Open Terminal** (`hermes config`, `hermes
   model`), then click **Restart agent** in ENV Builder.
 
+### Troubleshooting: Telegram bot not connecting
+
+Some networks (including some Hugging Face Spaces) block outbound
+connections to Telegram's API, so long-polling never establishes even
+though everything is configured correctly — check
+`data/hermes-setup.log` and the gateway logs (**Open Terminal** →
+`tail -n 60 /var/log/supervisor/gateway.log`) for `connect timed out`
+errors to `api.telegram.org`.
+
+If you see that, set `TELEGRAM_MODE=webhook` as a Space variable and
+restart. The container then switches the gateway to webhook mode and
+points it at `https://<this-space>.hf.space/telegram-webhook`, so
+Telegram delivers updates *to* the Space instead of the gateway polling
+*from* it. Note this only helps if the block is one-directional —
+registering the webhook and sending replies are still outbound calls to
+Telegram's API, so if those are blocked too this won't fully resolve it.
+
 ## 5. Keep-awake (automatic)
 
 If you set `CLOUDFLARE_WORKERS_TOKEN` in step 2, the container deploys a

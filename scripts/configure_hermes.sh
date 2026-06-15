@@ -38,6 +38,19 @@ case "${LLM_MODEL:-}" in
         ;;
 esac
 
+# --- optional Telegram webhook mode -----------------------------------
+# Default is long-polling (outbound to Telegram, no extra config). Set
+# TELEGRAM_MODE=webhook to switch to inbound delivery via this Space's own
+# HTTPS endpoint instead - useful if outbound connections to Telegram's API
+# are blocked from this network (the gateway log would show "connect timed
+# out" for api.telegram.org).
+GATEWAY_PORT="${GATEWAY_PORT:-8642}"
+if [ "${TELEGRAM_MODE:-}" = "webhook" ] && [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${SPACE_HOST:-}" ]; then
+    export TELEGRAM_WEBHOOK_URL="https://${SPACE_HOST}/telegram-webhook"
+    export TELEGRAM_WEBHOOK_SECRET="${TELEGRAM_WEBHOOK_SECRET:-$(openssl rand -hex 32)}"
+    export TELEGRAM_WEBHOOK_PORT="$GATEWAY_PORT"
+fi
+
 # Always write the provider keys + Telegram config to ~/.hermes/.env, which
 # Hermes loads on startup (required for secrets per the Hermes config docs).
 cat > "$HERMES_HOME/.env" <<EOF
@@ -47,6 +60,9 @@ ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
 TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
+TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL:-}
+TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
+TELEGRAM_WEBHOOK_PORT=${TELEGRAM_WEBHOOK_PORT:-}
 EOF
 chmod 600 "$HERMES_HOME/.env"
 

@@ -15,7 +15,8 @@ APP_DIR = Path(__file__).resolve().parent
 GATEWAY_PORT = int(os.environ.get("GATEWAY_PORT", "8642"))
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
 HERMES_ENV_FILE = HERMES_HOME / ".env"
-TELEGRAM_WEBHOOK_PATH = os.environ.get("HERMES_TELEGRAM_WEBHOOK_PATH", "/telegram/webhook")
+TELEGRAM_WEBHOOK_PATH = os.environ.get("HERMES_TELEGRAM_WEBHOOK_PATH", "/telegram-webhook")
+TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 
 app = FastAPI(title="Hermes Agent")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
@@ -221,9 +222,9 @@ async def env_builder_restart(request: Request):
 # Gateway reverse proxy (Bearer GATEWAY_TOKEN required)
 #
 # By default `hermes gateway run` talks to Telegram via long-polling and
-# opens no port, so these routes have nothing to proxy to. They only become
-# useful if you manually switch Hermes to webhook mode (TELEGRAM_WEBHOOK_URL
-# / TELEGRAM_WEBHOOK_PORT, see the Hermes Agent docs) pointed at GATEWAY_PORT.
+# opens no port, so these routes have nothing to proxy to. They become
+# useful in webhook mode (TELEGRAM_MODE=webhook, see configure_hermes.sh),
+# where hermes listens on GATEWAY_PORT for Telegram updates.
 # --------------------------------------------------------------------------
 @app.api_route("/gateway/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def gateway_proxy(path: str, request: Request):
@@ -233,11 +234,19 @@ async def gateway_proxy(path: str, request: Request):
 
 
 # --------------------------------------------------------------------------
-# Telegram webhook (optional, for the Cloudflare Worker proxy in webhook mode)
+# Telegram webhook (TELEGRAM_MODE=webhook)
+#
+# Telegram itself authenticates with the X-Telegram-Bot-Api-Secret-Token
+# header (TELEGRAM_WEBHOOK_SECRET). The Bearer GATEWAY_TOKEN path is for the
+# optional Cloudflare Worker proxy, which can't forward Telegram's header.
 # --------------------------------------------------------------------------
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
-    if not auth.verify_bearer(request.headers.get("authorization")):
+    telegram_secret = request.headers.get("x-telegram-bot-api-secret-token")
+    authorized = (
+        bool(TELEGRAM_WEBHOOK_SECRET) and telegram_secret == TELEGRAM_WEBHOOK_SECRET
+    ) or auth.verify_bearer(request.headers.get("authorization"))
+    if not authorized:
         return PlainTextResponse("unauthorized", status_code=401)
     return await _proxy_to_gateway(TELEGRAM_WEBHOOK_PATH, request, body_override=await request.body())
 
@@ -245,6 +254,10 @@ async def telegram_webhook(request: Request):
 async def _proxy_to_gateway(path: str, request: Request, body_override: bytes | None = None) -> Response:
     body = body_override if body_override is not None else await request.body()
     url = f"http://127.0.0.1:{GATEWAY_PORT}{path}"
+    headers = {"content-type": request.headers.get("content-type", "application/json")}
+    telegram_secret = request.headers.get("x-telegram-bot-api-secret-token")
+    if telegram_secret:
+        headers["x-telegram-bot-api-secret-token"] = telegram_secret
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             upstream = await client.request(
@@ -252,7 +265,7 @@ async def _proxy_to_gateway(path: str, request: Request, body_override: bytes | 
                 url,
                 params=dict(request.query_params),
                 content=body,
-                headers={"content-type": request.headers.get("content-type", "application/json")},
+                headers=headers,
             )
     except httpx.ConnectError:
         return PlainTextResponse("gateway unavailable", status_code=503)

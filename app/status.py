@@ -76,9 +76,11 @@ def telegram_status() -> dict:
     configured = bool(os.environ.get("TELEGRAM_BOT_TOKEN")) and bool(
         os.environ.get("TELEGRAM_ALLOWED_USERS")
     )
+    webhook_mode = os.environ.get("TELEGRAM_MODE", "").lower() == "webhook"
+    via = "Webhook (inbound to this Space)" if webhook_mode else "Long-polling (outbound to Telegram)"
     return {
         "configured": configured,
-        "via": "Webhook via Cloudflare Worker proxy",
+        "via": via,
     }
 
 
