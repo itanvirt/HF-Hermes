@@ -95,7 +95,7 @@ DEPLOY_CODE=$(curl -sS -o /tmp/keepawake-deploy.json -w '%{http_code}' -X PUT \
     -H "Authorization: Bearer ${CLOUDFLARE_WORKERS_TOKEN}" \
     "$API/accounts/$ACCOUNT_ID/workers/scripts/$WORKER_NAME" \
     -F 'metadata={"main_module":"worker.js","compatibility_date":"2024-09-01"};type=application/json' \
-    -F "worker.js=@/tmp/keepawake-worker.js;type=application/javascript+module")
+    -F "worker.js=@/tmp/keepawake-worker.js;filename=worker.js;type=application/javascript+module")
 cat /tmp/keepawake-deploy.json >>"$LOG"
 echo >>"$LOG"
 
