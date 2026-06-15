@@ -24,8 +24,10 @@ on the free CPU tier, with:
 - a Telegram bot via the Hermes messaging gateway (long-polling, no inbound
   webhook required)
 - automatic backups of agent state to a private Hugging Face dataset
-- an automatic keep-awake cron (built into this repo's GitHub Actions, no
-  extra setup) so the free Space doesn't go to sleep
+- automatic keep-awake: on first boot, the container deploys a tiny
+  Cloudflare Worker (using your `CLOUDFLARE_WORKERS_TOKEN` secret) that
+  pings `/health` every 10 minutes — no manual steps, works for any
+  duplicated Space
 
 ## Quickstart: duplicate this Space
 
@@ -40,10 +42,10 @@ on the free CPU tier, with:
 4. Visit `/env-builder` (unlock with your `GATEWAY_TOKEN`) to confirm
    everything is configured, or `/terminal` to run `hermes setup`
    interactively if anything needs adjusting.
-5. That's it — keep-awake works automatically via the
-   `.github/workflows/keep-awake.yml` cron in this repo, which pings
-   `/health` every 15 minutes. (Advanced/optional: `cloudflare/` has an
-   alternative Cloudflare Worker — see `cloudflare/README.md`.)
+5. That's it — on first boot, the container automatically deploys a
+   Cloudflare Worker (using your `CLOUDFLARE_WORKERS_TOKEN` secret) that
+   pings `/health` every 10 minutes, so the free Space doesn't go to sleep.
+   Check the **Keep Awake** card on the dashboard to confirm it deployed.
 
 ## Required secrets
 
@@ -53,14 +55,14 @@ after) duplicating:
 | Secret | Description |
 | --- | --- |
 | `HF_TOKEN` | Hugging Face token (write access) — used for the automatic backup dataset. |
-| `CLOUDFLARE_WORKERS_TOKEN` | (Optional/advanced) Cloudflare API token, only needed if you deploy the alternative Worker in `cloudflare/`. Keep-awake works without it. |
+| `CLOUDFLARE_WORKERS_TOKEN` | Cloudflare API token with "Edit Cloudflare Workers" permission. The container uses this to auto-deploy a keep-awake Worker on first boot — no manual steps. |
 | `TELEGRAM_ALLOWED_USERS` | Comma-separated Telegram user IDs allowed to message the agent. |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from `@BotFather`. |
 | `GATEWAY_TOKEN` | Shared secret protecting the terminal and ENV Builder. Use a long random string. |
 | `LLM_MODEL` | Model identifier, e.g. `gemini-2.5-flash` (good free-tier default). |
 | `LLM_API_KEY` | API key for the provider implied by `LLM_MODEL`. |
 
-See `SETUP.md` for a full walkthrough, including the Cloudflare Worker and
+See `SETUP.md` for a full walkthrough, including the keep-awake Worker and
 the GitHub → Hugging Face sync workflow.
 
 ## Repository layout
@@ -70,6 +72,6 @@ Dockerfile                 Container image (Hermes Agent + dashboard app)
 supervisord.conf           Runs the web app and the Hermes gateway
 app/                        FastAPI dashboard, gateway proxy, terminal, ENV Builder, backups
 scripts/                    Install + runtime configuration scripts
-cloudflare/                 Optional Telegram webhook proxy Worker (advanced)
-.github/workflows/          Sync to Hugging Face + keep-awake ping cron
+cloudflare/                 Manual/advanced Cloudflare Worker (Telegram webhook proxy, keep-awake fallback)
+.github/workflows/          Sync to Hugging Face
 ```

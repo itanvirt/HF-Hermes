@@ -1,9 +1,10 @@
-# Cloudflare Worker (optional, advanced)
+# Cloudflare Worker (manual / advanced)
 
-**You probably don't need this.** Keep-awake is already handled for free by
-`.github/workflows/keep-awake.yml`, which pings `/health` every 15 minutes
-with zero extra setup. This Worker is an alternative for people who'd
-rather not depend on GitHub Actions, and/or who want the optional Telegram
+**You probably don't need this.** If you set the `CLOUDFLARE_WORKERS_TOKEN`
+Space secret, the container automatically deploys an equivalent keep-awake
+Worker on every boot (see `scripts/configure_keepawake.sh` and the **Keep
+Awake** card on the dashboard) — zero manual steps. This standalone copy is
+useful if that auto-deploy fails, or if you want the optional Telegram
 webhook proxy:
 
 1. **Keep-awake**: pings `/health` on a cron schedule so a free-tier Space

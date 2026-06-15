@@ -106,7 +106,7 @@
                 </div>
                 <div class="card-body">
                     <span class="badge {{ '' if status.keep_awake.configured else 'dim' }}">
-                        {{ status.keep_awake.via if status.keep_awake.configured else 'NOT CONFIGURED' }}
+                        {{ status.keep_awake.via.upper() if not status.keep_awake.configured else status.keep_awake.via }}
                     </span>
                     <div style="margin-top:10px;">Pinging <code>{{ status.keep_awake.target }}</code></div>
                 </div>

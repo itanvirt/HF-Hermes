@@ -12,9 +12,11 @@ Settings → Variables and secrets → **New secret** for each of:
 
 - `HF_TOKEN` — create one at https://huggingface.co/settings/tokens with
   **write** access (needed to create/update the `hermes-backup` dataset).
-- `CLOUDFLARE_WORKERS_TOKEN` — (optional/advanced) Cloudflare API token with
-  "Edit Cloudflare Workers" permission, only needed for the alternative
-  Worker in `cloudflare/`. Keep-awake works without it (see step 5).
+- `CLOUDFLARE_WORKERS_TOKEN` — Cloudflare API token with "Edit Cloudflare
+  Workers" permission. On first boot, the container uses this to
+  automatically deploy a tiny Worker that pings this Space's `/health`
+  endpoint every 10 minutes, so the free tier doesn't go to sleep — no
+  further setup (see step 5).
 - `TELEGRAM_ALLOWED_USERS` — your Telegram numeric user ID(s),
   comma-separated. Get yours from `@userinfobot` on Telegram.
 - `TELEGRAM_BOT_TOKEN` — from `@BotFather` (`/newbot`).
@@ -38,11 +40,6 @@ The workflow in `.github/workflows/sync-to-hf.yml` pushes this repo to
    `.github/workflows/sync-to-hf.yml`.
 4. Push to `main` (or run the workflow manually from the Actions tab).
 
-This step also enables keep-awake automatically: once `main` is set up,
-`.github/workflows/keep-awake.yml` pings your Space's `/health` endpoint
-every 15 minutes — no further setup. If your Space has a different
-owner/name, edit `SPACE_URL` in that workflow too.
-
 ## 4. First boot
 
 - Open the Space. The dashboard shows live status for the gateway, model,
@@ -58,12 +55,22 @@ owner/name, edit `SPACE_URL` in that workflow too.
   **Open Hermes Agent** or **Open Terminal** (`hermes config`, `hermes
   model`), then click **Restart agent** in ENV Builder.
 
-## 5. (Optional/advanced) Cloudflare Worker
+## 5. Keep-awake (automatic)
 
-Keep-awake is already handled by step 3's GitHub Actions cron — nothing
-more to do. `cloudflare/` has an alternative Worker for people who'd
-rather not rely on GitHub Actions, and/or who want the optional Telegram
-webhook proxy mode. See `cloudflare/README.md` if you want it.
+If you set `CLOUDFLARE_WORKERS_TOKEN` in step 2, the container deploys a
+Cloudflare Worker on every boot that pings this Space's `/health` endpoint
+every 10 minutes — nothing more to do. Check the **Keep Awake** card on the
+dashboard to confirm it deployed (or `data/keepawake-setup.log` if it shows
+an error).
+
+The Worker is created under the first account your token can see. If your
+token has access to multiple Cloudflare accounts, set the
+`CLOUDFLARE_ACCOUNT_ID` secret too (Cloudflare dashboard → Workers & Pages →
+Account ID, right sidebar).
+
+`cloudflare/` also has a standalone copy of this Worker for manual
+deployment (`npx wrangler deploy`), plus an optional Telegram webhook proxy
+mode — see `cloudflare/README.md`. You generally don't need it.
 
 ## 6. Backups
 

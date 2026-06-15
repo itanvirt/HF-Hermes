@@ -9,6 +9,7 @@ from pathlib import Path
 START_TIME = time.time()
 APP_PORT = int(os.environ.get("PORT", "7860"))
 BACKUP_STATE_FILE = Path(os.environ.get("BACKUP_STATE_FILE", "/home/user/app/data/backup_state.json"))
+KEEPAWAKE_STATE_FILE = Path(os.environ.get("KEEPAWAKE_STATE_FILE", "/home/user/app/data/keepawake_state.json"))
 
 
 def _format_duration(seconds: float) -> str:
@@ -97,14 +98,32 @@ def backup_status() -> dict:
 
 
 def keep_awake_status() -> dict:
-    worker_url = os.environ.get("CF_WORKER_URL", "")
     space_host = os.environ.get("SPACE_HOST", "")
-    target = f"https://{space_host}/health" if space_host else "<your-space>.hf.space/health"
-    via = "Cloudflare Worker cron" if worker_url else "GitHub Actions cron (every 15 min)"
+    default_target = f"https://{space_host}/health" if space_host else "<your-space>.hf.space/health"
+    if KEEPAWAKE_STATE_FILE.exists():
+        try:
+            data = json.loads(KEEPAWAKE_STATE_FILE.read_text())
+            status = data.get("status")
+            if status == "configured":
+                worker = data.get("worker")
+                return {
+                    "configured": True,
+                    "via": f"Cloudflare Worker ({worker})" if worker else "Cloudflare Worker",
+                    "target": data.get("target") or default_target,
+                }
+            if status == "error":
+                return {
+                    "configured": False,
+                    "via": "Cloudflare Worker deploy failed (see data/keepawake-setup.log)",
+                    "target": data.get("target") or default_target,
+                }
+        except Exception:
+            pass
+    cf_token = os.environ.get("CLOUDFLARE_WORKERS_TOKEN", "")
     return {
-        "configured": True,
-        "via": via,
-        "target": target,
+        "configured": False,
+        "via": "pending (deploying on boot)" if cf_token else "not configured",
+        "target": default_target,
     }
 
 
