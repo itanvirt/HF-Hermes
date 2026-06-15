@@ -112,9 +112,11 @@ def keep_awake_status() -> dict:
                     "target": data.get("target") or default_target,
                 }
             if status == "error":
+                detail = data.get("detail")
+                via = f"Cloudflare error: {detail}" if detail else "Cloudflare Worker deploy failed (see data/keepawake-setup.log)"
                 return {
                     "configured": False,
-                    "via": "Cloudflare Worker deploy failed (see data/keepawake-setup.log)",
+                    "via": via,
                     "target": data.get("target") or default_target,
                 }
         except Exception:
