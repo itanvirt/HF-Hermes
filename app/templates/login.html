@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hermes Agent · Login</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="auth-box">
+        <h2>Gateway Token</h2>
+        {% if not configured %}
+        <p class="error">GATEWAY_TOKEN is not set for this Space. Add it under Settings &rarr; Variables and secrets, then restart.</p>
+        {% endif %}
+        {% if error %}
+        <p class="error">{{ error }}</p>
+        {% endif %}
+        <form method="post" action="/login">
+            <input type="hidden" name="next" value="{{ next }}">
+            <input type="password" name="token" placeholder="Enter GATEWAY_TOKEN" autofocus>
+            <button type="submit">Unlock</button>
+        </form>
+    </div>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ENV Builder · Hermes Agent</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="page">
+        <div class="hero" style="margin-bottom:24px;">
+            <h1 style="font-size:2rem;">ENV Builder</h1>
+            <div class="subtitle"><a href="/" style="color:inherit;">&larr; back to dashboard</a></div>
+        </div>
+
+        {% if message %}<div class="message">{{ message }}</div>{% endif %}
+
+        <h3>Space secrets</h3>
+        <table class="env-table">
+            <tr><th>Secret</th><th>Status</th></tr>
+            {% for s in secrets_state %}
+            <tr>
+                <td>{{ s.name }}</td>
+                <td>{{ 'SET' if s.set else 'MISSING' }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        <p style="color:var(--text-dim); font-size:0.85rem;">
+            These come from this Space's Settings &rarr; Variables and secrets.
+            Edit them there, then click "Restart agent" below.
+        </p>
+
+        <h3>Hermes runtime config (<code>{{ env_path }}</code>)</h3>
+        <form method="post" action="/env-builder/save">
+            <textarea name="env_contents" spellcheck="false">{{ env_contents }}</textarea>
+            <div class="toolbar">
+                <button type="submit">Save</button>
+            </div>
+        </form>
+
+        <div class="toolbar">
+            <form method="post" action="/env-builder/reconfigure">
+                <button type="submit">Re-run configuration</button>
+            </form>
+            <form method="post" action="/env-builder/restart">
+                <button type="submit">Restart agent</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
