@@ -2,6 +2,7 @@ import json
 import mimetypes
 import os
 import platform
+import re
 import subprocess
 from pathlib import Path
 
@@ -753,9 +754,11 @@ async def hermes_proxy(path: str, request: Request):
     ctype = upstream.headers.get("content-type", "")
     content = upstream.content
 
-    # Inject base-path so the SPA prefixes all routes/API calls with /hermes
+    # Rewrite absolute asset paths and inject base-path variable
     if "text/html" in ctype:
         html = content.decode("utf-8", errors="replace")
+        # Vite builds absolute paths like src="/assets/..." — rewrite to /hermes/assets/...
+        html = re.sub(r'((?:src|href|action)=")/', r'\1/hermes/', html)
         inject = '<script>window.__HERMES_BASE_PATH__="/hermes";</script>'
         if "</head>" in html:
             html = html.replace("</head>", inject + "</head>", 1)
@@ -771,5 +774,26 @@ async def hermes_proxy(path: str, request: Request):
         content=content,
         status_code=upstream.status_code,
         media_type=ctype,
+        headers=resp_headers,
+    )
+
+
+@app.get("/assets/{path:path}", include_in_schema=False)
+async def hermes_assets_proxy(path: str, request: Request):
+    """Proxy Vite-built static assets from the Hermes dashboard."""
+    upstream_url = f"http://127.0.0.1:{DASHBOARD_PORT}/assets/{path}"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            upstream = await client.get(upstream_url, params=dict(request.query_params))
+    except httpx.ConnectError:
+        return Response(status_code=503)
+    resp_headers = {
+        k: v for k, v in upstream.headers.items()
+        if k.lower() not in _DASH_STRIP_HEADERS
+    }
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        media_type=upstream.headers.get("content-type", "application/octet-stream"),
         headers=resp_headers,
     )
