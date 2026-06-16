@@ -476,10 +476,11 @@
 
 <script>
 (function () {
-    var TOKEN_KEY = 'hermes_token';
-    var history   = [];
-    var isBusy    = false;
-    var model     = {{ model | tojson }};
+    var TOKEN_KEY   = 'hermes_token';
+    var HISTORY_KEY = 'hermes_chat_history';
+    var history     = [];
+    var isBusy      = false;
+    var model       = {{ model | tojson }};
 
     var ccAuth    = document.getElementById('ccAuth');
     var ccRoot    = document.getElementById('ccRoot');
@@ -501,6 +502,14 @@
     function gt()  { return localStorage.getItem(TOKEN_KEY) || ''; }
     function st(v) { localStorage.setItem(TOKEN_KEY, v); }
     function dt()  { localStorage.removeItem(TOKEN_KEY); }
+
+    /* history persistence */
+    function saveHistory() {
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); } catch(e) {}
+    }
+    function loadHistory() {
+        try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch(e) { return []; }
+    }
 
     /* views */
     function showAuth() {
@@ -629,6 +638,7 @@
                     if (r.done) {
                         if (!out) bub.textContent = '[No response — check LLM_MODEL / LLM_API_KEY]';
                         history.push({ role: 'assistant', content: out });
+                        saveHistory();
                         finalise(bub); resetInput(); return;
                     }
                     buf += decoder.decode(r.value, { stream: true });
@@ -674,6 +684,7 @@
 
     clearBtn.addEventListener('click', function() {
         history = [];
+        localStorage.removeItem(HISTORY_KEY);
         messagesEl.innerHTML = '';
         if (emptyState) { emptyState.style.display = ''; messagesEl.appendChild(emptyState); }
     });
@@ -684,7 +695,18 @@
 
     /* init */
     loadModel();
-    if (gt()) { showApp(); } else { showAuth(); }
+    if (gt()) {
+        showApp();
+        // Restore previous conversation from localStorage
+        history = loadHistory();
+        if (history.length > 0) {
+            history.forEach(function(msg) {
+                if (msg.role === 'user' || msg.role === 'assistant') {
+                    addBubble(msg.role, msg.content, false);
+                }
+            });
+        }
+    } else { showAuth(); }
 }());
 </script>
 </body>
