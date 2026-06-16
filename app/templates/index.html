@@ -7,103 +7,206 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="page">
-        <div class="hero">
-            <h1>{{ title }}</h1>
-            <div class="subtitle">{{ subtitle }}</div>
-        </div>
 
-        <div class="actions">
-            <a class="btn primary" href="/agent">Open Hermes Agent &rarr;</a>
-            <a class="btn" href="/terminal">&#x1F4BB; Open Terminal &rarr;</a>
-            <a class="btn" href="/env-builder">&#9881; ENV Builder &rarr;</a>
-        </div>
+<nav class="nav">
+    <div class="nav-brand">
+        <div class="nav-glyph"><div class="nav-glyph-dot"></div></div>
+        <span class="nav-name">{{ title }}</span>
+        <div class="nav-sep"></div>
+        <span class="nav-tag">{{ subtitle }}</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="nav-actions">
+        <a class="btn sm" href="/agent" target="_blank" rel="noopener">Agent ↗</a>
+        <a class="btn sm" href="/terminal" target="_blank" rel="noopener">Terminal ↗</a>
+        {% if authenticated %}
+        <a class="btn sm" href="/env-builder">ENV</a>
+        <a class="btn sm ghost" href="/logout">Logout</a>
+        {% else %}
+        <a class="btn sm primary" href="/login?next=/env-builder">Login</a>
+        {% endif %}
+    </div>
+</nav>
 
-        <div class="cards">
-            <div class="card {{ 'active' if status.gateway.online else '' }}">
-                <div class="card-header">
-                    <span class="card-title">Gateway</span>
-                    <span class="dot {{ 'green' if status.gateway.online else 'red' }}"></span>
-                </div>
-                <div class="card-body">
-                    <span class="badge {{ '' if status.gateway.online else 'dim' }}">
-                        {{ 'ONLINE' if status.gateway.online else 'OFFLINE' }}
-                    </span>
-                    <div style="margin-top:10px;">API on port {{ status.gateway.port }}</div>
-                    <div>{{ 'Protected' if status.gateway.protected else 'Unprotected (set GATEWAY_TOKEN)' }}</div>
-                </div>
-            </div>
-
-            <div class="card {{ 'active' if status.model.configured else '' }}">
-                <div class="card-header">
-                    <span class="card-title">Model</span>
-                    <span class="dot {{ 'green' if status.model.configured else 'red' }}"></span>
-                </div>
-                <div class="card-body">
-                    <code>{{ status.model.model }}</code>
-                    <div style="margin-top:10px;">Provider: {{ status.model.provider }}</div>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <span class="card-title">Runtime</span>
-                    <span class="dot"></span>
-                </div>
-                <div class="card-body">
-                    <div class="big">{{ status.runtime.uptime }}</div>
-                    <div>Port {{ status.runtime.port }}</div>
-                </div>
-            </div>
-
-            <div class="card {{ 'active' if status.telegram.configured else '' }}">
-                <div class="card-header">
-                    <span class="card-title">Telegram</span>
-                    <span class="dot {{ 'green' if status.telegram.configured else 'red' }}"></span>
-                </div>
-                <div class="card-body">
-                    <span class="badge {{ '' if status.telegram.configured else 'dim' }}">
-                        {{ 'CONFIGURED' if status.telegram.configured else 'NOT CONFIGURED' }}
-                    </span>
-                    <div style="margin-top:10px;">{{ status.telegram.via }}</div>
-                </div>
-            </div>
-
-            <div class="card {{ 'active' if status.backup.status == 'success' else '' }}">
-                <div class="card-header">
-                    <span class="card-title">Backup</span>
-                    <span class="dot {{ 'green' if status.backup.status == 'success' else 'red' }}"></span>
-                </div>
-                <div class="card-body">
-                    <span class="badge {{ '' if status.backup.status == 'success' else 'dim' }}">
-                        {{ status.backup.status.upper() }}
-                    </span>
-                    {% if status.backup.repo %}
-                    <div style="margin-top:10px;">Uploaded Hermes state to {{ status.backup.repo }}</div>
-                    {% endif %}
-                    {% if status.backup.at %}
-                    <div>At {{ status.backup.at }}</div>
-                    {% endif %}
-                </div>
-            </div>
-
-            <div class="card {{ 'active' if status.keep_awake.configured else '' }}">
-                <div class="card-header">
-                    <span class="card-title">Keep Awake</span>
-                    <span class="dot {{ 'green' if status.keep_awake.configured else 'red' }}"></span>
-                </div>
-                <div class="card-body">
-                    <span class="badge {{ '' if status.keep_awake.configured else 'dim' }}">
-                        {{ status.keep_awake.via if status.keep_awake.configured else 'NOT CONFIGURED' }}
-                    </span>
-                    <div style="margin-top:10px;">Pinging <code>{{ status.keep_awake.target }}</code></div>
-                </div>
-            </div>
-        </div>
-
-        <div class="footer">
-            {% if owner %}Built by <a href="https://huggingface.co/{{ owner }}">@{{ owner }}</a>{% endif %}
+<main class="dash">
+    <div class="dash-head">
+        <div class="dash-title">Status</div>
+        <div class="dash-meta">
+            <div class="refresh-dot" id="refreshDot"></div>
+            <span id="refreshLabel">live</span>
         </div>
     </div>
+
+    <div class="grid" id="statusGrid">
+
+        <!-- Gateway -->
+        <div class="card {% if status.gateway.online %}ok{% elif status.gateway.telegram_configured %}err{% else %}warn{% endif %}" id="card-gateway">
+            <div class="card-lbl">Gateway</div>
+            <div class="card-row">
+                {% if status.gateway.online %}
+                <span class="pill ok"><span class="dot pulse"></span>&nbsp;Online</span>
+                {% elif status.gateway.telegram_configured %}
+                <span class="pill err">Offline</span>
+                {% else %}
+                <span class="pill warn">Idle</span>
+                {% endif %}
+                {% if status.gateway.protected %}<span class="pill info">Protected</span>{% endif %}
+            </div>
+            <div class="card-body" id="gw-via">
+                {% if status.gateway.online %}
+                {{ status.telegram.via }}
+                {% elif status.gateway.telegram_configured %}
+                Not running — check gateway logs
+                {% else %}
+                Set <strong>TELEGRAM_BOT_TOKEN</strong> to enable
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Model -->
+        <div class="card {% if status.model.configured %}ok{% else %}warn{% endif %}" id="card-model">
+            <div class="card-lbl">Language Model</div>
+            <div class="card-row">
+                {% if status.model.configured %}
+                <span class="pill ok">Ready</span>
+                {% else %}
+                <span class="pill warn">Not configured</span>
+                {% endif %}
+                <span class="tag">{{ status.model.provider }}</span>
+            </div>
+            <div class="card-body">
+                <strong>{{ status.model.model }}</strong>
+            </div>
+        </div>
+
+        <!-- Runtime -->
+        <div class="card info" id="card-runtime">
+            <div class="card-lbl">Runtime</div>
+            <div class="card-row">
+                <span class="pill info">Up</span>
+                <span class="tag">:{{ status.runtime.port }}</span>
+            </div>
+            <div class="metric" id="rt-uptime">{{ status.runtime.uptime }}</div>
+            <div class="metric-lbl">uptime</div>
+        </div>
+
+        <!-- Telegram -->
+        <div class="card {% if status.telegram.configured %}ok{% else %}warn{% endif %}" id="card-telegram">
+            <div class="card-lbl">Telegram</div>
+            <div class="card-row">
+                {% if status.telegram.configured %}
+                <span class="pill ok">Configured</span>
+                {% else %}
+                <span class="pill warn">Not set</span>
+                {% endif %}
+            </div>
+            <div class="card-body" id="tg-via">{{ status.telegram.via }}</div>
+        </div>
+
+        <!-- Backup -->
+        <div class="card {% if status.backup.status == 'success' %}ok{% elif 'error' in status.backup.status %}err{% elif status.backup.status == 'not configured' %}warn{% else %}info{% endif %}" id="card-backup">
+            <div class="card-lbl">State Backup</div>
+            <div class="card-row">
+                {% if status.backup.status == 'success' %}
+                <span class="pill ok">Synced</span>
+                {% elif 'error' in status.backup.status %}
+                <span class="pill err">Error</span>
+                {% elif status.backup.status == 'not configured' %}
+                <span class="pill warn">No HF_TOKEN</span>
+                {% else %}
+                <span class="pill info">{{ status.backup.status }}</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if status.backup.repo %}<strong>{{ status.backup.repo }}</strong>{% endif %}
+                {% if status.backup.at %}<br>Last at {{ status.backup.at }} UTC{% endif %}
+                {% if not status.backup.repo %}Set <strong>HF_TOKEN</strong> to enable auto-backup{% endif %}
+            </div>
+        </div>
+
+        <!-- Keep Awake -->
+        <div class="card {% if status.keep_awake.configured %}ok{% else %}warn{% endif %}" id="card-keepawake">
+            <div class="card-lbl">Keep Awake</div>
+            <div class="card-row">
+                {% if status.keep_awake.configured %}
+                <span class="pill ok">Active</span>
+                {% else %}
+                <span class="pill warn">Pending</span>
+                {% endif %}
+            </div>
+            <div class="card-body" id="ka-via">{{ status.keep_awake.via }}</div>
+        </div>
+
+    </div>
+
+    <div class="foot">
+        <span style="color:var(--text-3);font-size:0.75rem;">
+            Open Agent or Terminal in a new tab from <code>*.hf.space</code> — embedded iframes may block session cookies.
+        </span>
+        <br>
+        {% if owner %}<a href="https://huggingface.co/{{ owner }}">@{{ owner }}</a> · {% endif %}
+        <a href="https://github.com/NousResearch/hermes-agent" target="_blank" rel="noopener">NousResearch/hermes-agent</a>
+    </div>
+</main>
+
+<script>
+(function () {
+    var label = document.getElementById('refreshLabel');
+
+    function applyStatus(s) {
+        var gwCard = document.getElementById('card-gateway');
+        if (gwCard) {
+            gwCard.className = 'card ' + (s.gateway.online ? 'ok' : s.gateway.telegram_configured ? 'err' : 'warn');
+            var via = document.getElementById('gw-via');
+            if (via) {
+                if (s.gateway.online) via.innerHTML = s.telegram.via;
+                else if (s.gateway.telegram_configured) via.innerHTML = 'Not running — check gateway logs';
+                else via.innerHTML = 'Set <strong>TELEGRAM_BOT_TOKEN</strong> to enable';
+            }
+        }
+        var mdCard = document.getElementById('card-model');
+        if (mdCard) mdCard.className = 'card ' + (s.model.configured ? 'ok' : 'warn');
+
+        var uptime = document.getElementById('rt-uptime');
+        if (uptime) uptime.textContent = s.runtime.uptime;
+
+        var tgCard = document.getElementById('card-telegram');
+        if (tgCard) tgCard.className = 'card ' + (s.telegram.configured ? 'ok' : 'warn');
+        var tgVia = document.getElementById('tg-via');
+        if (tgVia) tgVia.textContent = s.telegram.via;
+
+        var bkCard = document.getElementById('card-backup');
+        if (bkCard) {
+            var st = s.backup.status;
+            bkCard.className = 'card ' + (
+                st === 'success' ? 'ok' :
+                st.indexOf('error') !== -1 ? 'err' :
+                st === 'not configured' ? 'warn' : 'info'
+            );
+        }
+
+        var kaCard = document.getElementById('card-keepawake');
+        if (kaCard) kaCard.className = 'card ' + (s.keep_awake.configured ? 'ok' : 'warn');
+        var kaVia = document.getElementById('ka-via');
+        if (kaVia) kaVia.textContent = s.keep_awake.via;
+    }
+
+    function tick() {
+        fetch('/api/status')
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                applyStatus(data);
+                var now = new Date();
+                if (label) label.textContent = 'updated ' + now.toLocaleTimeString();
+            })
+            .catch(function () {
+                if (label) label.textContent = 'offline';
+            });
+    }
+
+    setInterval(tick, 30000);
+}());
+</script>
+
 </body>
 </html>
