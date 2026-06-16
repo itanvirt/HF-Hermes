@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>System · Hermes</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        html, body { margin: 0; padding: 0; }
+
+        .sp-bar {
+            height: 50px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center;
+            padding: 0 14px; gap: 10px;
+            background: var(--bg); position: sticky; top: 0; z-index: 5;
+        }
+        .sp-bar-title { font-weight: 700; font-size: 0.9rem; flex: 1; }
+        .sp-bar-links { display: flex; gap: 6px; }
+
+        .sp-body {
+            max-width: 860px; margin: 0 auto;
+            padding: 24px 16px 60px;
+        }
+
+        .sp-section { margin-bottom: 28px; }
+        .sp-section-title {
+            font-family: var(--mono); font-size: 0.65rem;
+            letter-spacing: .14em; text-transform: uppercase;
+            color: var(--text-2); margin-bottom: 12px;
+        }
+
+        .sp-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+            gap: 8px;
+        }
+        .sp-stat {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--r-sm);
+            padding: 11px 13px;
+        }
+        .sp-stat-lbl {
+            font-family: var(--mono); font-size: 0.6rem;
+            letter-spacing: .12em; text-transform: uppercase;
+            color: var(--text-2); margin-bottom: 4px;
+        }
+        .sp-stat-val {
+            font-family: var(--mono); font-size: 0.8rem;
+            color: var(--text); font-weight: 600;
+            word-break: break-all;
+        }
+        .sp-bar-wrap {
+            height: 5px; border-radius: 3px;
+            background: var(--surface-2); margin-top: 7px; overflow: hidden;
+        }
+        .sp-bar-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+        .sp-bar-fill.ok     { background: var(--accent); }
+        .sp-bar-fill.warn   { background: var(--amber); }
+        .sp-bar-fill.danger { background: var(--red); }
+
+        /* gateway controls */
+        .sp-gw {
+            display: flex; align-items: center;
+            flex-wrap: wrap; gap: 8px;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--r-sm); padding: 14px;
+        }
+        .sp-gw-info { font-family: var(--mono); font-size: 0.78rem; color: var(--text-2); }
+
+        /* model form */
+        .sp-model-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--r-sm); padding: 16px;
+        }
+        .sp-model-current {
+            font-family: var(--mono); font-size: 0.8rem; color: var(--text-2);
+            margin-bottom: 14px;
+        }
+        .sp-model-form { display: flex; flex-wrap: wrap; gap: 8px; }
+        .sp-input {
+            padding: 9px 12px; border-radius: var(--r-xs);
+            border: 1px solid var(--border-2);
+            background: var(--bg-2); color: var(--text);
+            font-family: var(--mono); font-size: 0.82rem;
+            outline: none; flex: 1; min-width: 180px;
+        }
+        .sp-input:focus { border-color: var(--accent); }
+        .sp-input::placeholder { color: var(--text-3); }
+    </style>
+</head>
+<body>
+
+    <div class="sp-bar">
+        <div class="sp-bar-title">System</div>
+        <div class="sp-bar-links">
+            <a class="btn sm ghost" href="/agent">Agent</a>
+            <a class="btn sm ghost" href="/">Dashboard</a>
+        </div>
+    </div>
+
+    <div class="sp-body">
+
+        {% if message %}
+        <div style="margin-bottom:18px;padding:10px 14px;background:var(--green-dim);border:1px solid var(--green-border);border-radius:var(--r-sm);font-size:0.82rem;color:var(--green);">
+            {{ message }}
+        </div>
+        {% endif %}
+
+        <!-- Host -->
+        <div class="sp-section">
+            <div class="sp-section-title">Host</div>
+            <div class="sp-grid" id="hostGrid">
+                <div class="sp-stat"><div class="sp-stat-lbl">loading</div><div class="sp-stat-val">…</div></div>
+            </div>
+        </div>
+
+        <!-- Resources -->
+        <div class="sp-section">
+            <div class="sp-section-title">Resources</div>
+            <div class="sp-grid" id="resourceGrid">
+                <div class="sp-stat"><div class="sp-stat-lbl">loading</div><div class="sp-stat-val">…</div></div>
+            </div>
+        </div>
+
+        <!-- Gateway -->
+        <div class="sp-section">
+            <div class="sp-section-title">Gateway</div>
+            <div class="sp-gw">
+                <span id="gwPill" class="pill">…</span>
+                <span id="gwPid" class="sp-gw-info"></span>
+                <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;">
+                    <button class="btn sm primary" onclick="gwAct('restart')">Restart</button>
+                    <button class="btn sm" onclick="gwAct('start')">Start</button>
+                    <button class="btn sm ghost danger" onclick="gwAct('stop')">Stop</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model switcher -->
+        <div class="sp-section">
+            <div class="sp-section-title">Active Model</div>
+            <div class="sp-model-card">
+                <div class="sp-model-current">
+                    Current: <strong style="color:var(--text);">{{ model or 'not configured' }}</strong>
+                    &nbsp;·&nbsp; provider: <strong style="color:var(--text);">{{ provider }}</strong>
+                </div>
+                <form class="sp-model-form" method="post" action="/api/models/switch">
+                    <input class="sp-input" name="model" placeholder="model  (e.g. gpt-4o)" value="{{ model }}" required>
+                    <input class="sp-input" name="api_key" type="password" placeholder="new API key  (blank = keep existing)">
+                    <input class="sp-input" name="provider" placeholder="provider  (leave blank to auto-detect)" style="max-width:240px;">
+                    <button class="btn primary" type="submit" style="white-space:nowrap;">Switch &amp; Restart →</button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+<script>
+(function () {
+    function fmt(b) {
+        if (b == null) return '?';
+        var u = ['B','KB','MB','GB','TB'], i = 0;
+        while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+        return b.toFixed(1) + ' ' + u[i];
+    }
+
+    function bar(pct) {
+        var cls = pct > 90 ? 'danger' : pct > 75 ? 'warn' : 'ok';
+        return '<div class="sp-bar-wrap"><div class="sp-bar-fill ' + cls + '" style="width:' + pct + '%"></div></div>';
+    }
+
+    function cell(lbl, val, pct) {
+        return '<div class="sp-stat"><div class="sp-stat-lbl">' + lbl + '</div>' +
+               '<div class="sp-stat-val">' + val + '</div>' +
+               (pct != null ? bar(pct) : '') + '</div>';
+    }
+
+    function refresh() {
+        fetch('/api/system')
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var m = d.memory, dk = d.disk;
+
+                document.getElementById('hostGrid').innerHTML =
+                    cell('OS', d.os) +
+                    cell('ARCH', d.arch) +
+                    cell('HOSTNAME', d.hostname) +
+                    cell('PYTHON', d.python) +
+                    cell('HERMES', d.hermes_version) +
+                    cell('CPU CORES', d.cpu_count) +
+                    cell('UPTIME', d.uptime) +
+                    cell('LOAD AVG', d.load['1m'] + ' / ' + d.load['5m'] + ' / ' + d.load['15m']);
+
+                document.getElementById('resourceGrid').innerHTML =
+                    cell('MEMORY', fmt(m.used) + ' / ' + fmt(m.total) + '  (' + m.pct + '%)', m.pct) +
+                    cell('DISK', fmt(dk.used) + ' / ' + fmt(dk.total) + '  (' + dk.pct + '%)', dk.pct);
+
+                var pill = document.getElementById('gwPill');
+                pill.className = 'pill ' + (d.gateway_running ? 'ok' : 'err');
+                pill.innerHTML = d.gateway_running
+                    ? '<span class="dot pulse"></span>&nbsp;Running'
+                    : 'Stopped';
+                document.getElementById('gwPid').textContent = d.gateway_pid ? 'pid ' + d.gateway_pid : '';
+            })
+            .catch(function () {
+                document.getElementById('hostGrid').innerHTML = '<div class="sp-stat"><div class="sp-stat-lbl">error</div><div class="sp-stat-val">failed to load</div></div>';
+            });
+    }
+
+    window.gwAct = function (action) {
+        fetch('/api/gateway/' + action, { method: 'POST' })
+            .then(function () { setTimeout(refresh, 1500); });
+    };
+
+    refresh();
+    setInterval(refresh, 10000);
+}());
+</script>
+</body>
+</html>

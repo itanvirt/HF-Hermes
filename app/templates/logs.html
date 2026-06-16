@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Logs · Hermes</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+        .lp { display: flex; flex-direction: column; height: 100dvh; }
+
+        .lp-bar {
+            flex-shrink: 0; height: 50px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center;
+            padding: 0 14px; gap: 10px;
+            background: var(--bg);
+        }
+        .lp-bar-title { font-weight: 700; font-size: 0.9rem; flex: 1; }
+        .lp-bar-links { display: flex; gap: 6px; }
+
+        .lp-ctrl {
+            flex-shrink: 0;
+            padding: 8px 14px;
+            border-bottom: 1px solid var(--border);
+            display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+            background: var(--bg-2);
+        }
+        .lp-tab {
+            font-family: var(--mono); font-size: 0.7rem;
+            padding: 4px 9px; border-radius: var(--r-xs);
+            border: 1px solid var(--border-2);
+            background: var(--surface); color: var(--text-2);
+            cursor: pointer; white-space: nowrap;
+        }
+        .lp-tab.active {
+            background: var(--accent-dim);
+            border-color: var(--accent-border);
+            color: var(--accent);
+        }
+        .lp-search {
+            flex: 1; min-width: 100px;
+            padding: 5px 10px; border-radius: var(--r-xs);
+            border: 1px solid var(--border-2);
+            background: var(--surface); color: var(--text);
+            font-family: var(--mono); font-size: 0.78rem;
+            outline: none;
+        }
+        .lp-search:focus { border-color: var(--accent); }
+        .lp-lines {
+            font-family: var(--mono); font-size: 0.72rem;
+            padding: 5px 6px; border-radius: var(--r-xs);
+            border: 1px solid var(--border-2);
+            background: var(--surface); color: var(--text);
+            outline: none;
+        }
+        .lp-chk-lbl {
+            font-family: var(--mono); font-size: 0.72rem;
+            color: var(--text-2); display: flex; align-items: center; gap: 4px;
+            cursor: pointer; user-select: none;
+        }
+        .lp-content {
+            flex: 1; overflow-y: auto; overflow-x: auto;
+            padding: 14px 16px;
+            background: #040508;
+            font-family: var(--mono); font-size: 0.76rem;
+            line-height: 1.65; color: #a8bcd8;
+            white-space: pre; tab-size: 4;
+            -webkit-overflow-scrolling: touch;
+        }
+        .lp-content .hl { background: rgba(255,215,0,.18); color: #ffd700; border-radius: 2px; }
+        .lp-status {
+            flex-shrink: 0;
+            font-family: var(--mono); font-size: 0.66rem;
+            color: var(--text-3); padding: 3px 16px;
+            border-top: 1px solid var(--border);
+            background: var(--bg);
+        }
+    </style>
+</head>
+<body>
+<div class="lp">
+
+    <div class="lp-bar">
+        <div class="lp-bar-title">Logs</div>
+        <div class="lp-bar-links">
+            <a class="btn sm ghost" href="/agent">Agent</a>
+            <a class="btn sm ghost" href="/">Dashboard</a>
+        </div>
+    </div>
+
+    <div class="lp-ctrl">
+        <div id="lpTabs" style="display:flex;gap:4px;flex-wrap:wrap;">
+            <button class="lp-tab active" data-f="gateway">gateway</button>
+            <button class="lp-tab" data-f="web">web</button>
+            <button class="lp-tab" data-f="supervisor">supervisor</button>
+            <button class="lp-tab" data-f="startup">startup</button>
+            <button class="lp-tab" data-f="hermes-setup">hermes-setup</button>
+            <button class="lp-tab" data-f="cloudflare">cloudflare</button>
+        </div>
+        <input class="lp-search" type="text" id="lpSearch" placeholder="filter…">
+        <select class="lp-lines" id="lpLines">
+            <option value="50">50</option>
+            <option value="100" selected>100</option>
+            <option value="200">200</option>
+            <option value="500">500</option>
+        </select>
+        <label class="lp-chk-lbl">
+            <input type="checkbox" id="lpAuto"> auto
+        </label>
+        <button class="btn sm ghost" id="lpDown" title="Download">↓</button>
+    </div>
+
+    <div class="lp-content" id="lpContent">loading…</div>
+    <div class="lp-status" id="lpStatus">ready</div>
+
+</div>
+
+<script>
+(function () {
+    var file    = 'gateway';
+    var raw     = '';
+    var timer   = null;
+
+    var tabs    = document.getElementById('lpTabs');
+    var search  = document.getElementById('lpSearch');
+    var lines   = document.getElementById('lpLines');
+    var content = document.getElementById('lpContent');
+    var status  = document.getElementById('lpStatus');
+    var autoEl  = document.getElementById('lpAuto');
+    var downBtn = document.getElementById('lpDown');
+
+    function load() {
+        status.textContent = 'loading…';
+        fetch('/api/logs?file=' + encodeURIComponent(file) + '&lines=' + lines.value)
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                raw = d.content || d.error || '';
+                render();
+                status.textContent = file + '.log · ' + (d.total_lines || 0) + ' total · ' + new Date().toLocaleTimeString();
+            })
+            .catch(function (e) { content.textContent = 'Error: ' + e; status.textContent = 'error'; });
+    }
+
+    function render() {
+        var q = search.value.trim();
+        if (!q) { content.textContent = raw; scrollBottom(); return; }
+        var esc = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var re;
+        try { re = new RegExp('(' + esc + ')', 'gi'); } catch (e) { content.textContent = raw; return; }
+        var filtered = raw.split('\n').filter(function (l) { return re.test(l); });
+        content.innerHTML = filtered.map(function (l) {
+            return l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(re, '<span class="hl">$1</span>');
+        }).join('\n');
+        scrollBottom();
+    }
+
+    function scrollBottom() {
+        content.scrollTop = content.scrollHeight;
+    }
+
+    function updateDownload() {
+        var blob = new Blob([raw], { type: 'text/plain' });
+        downBtn.onclick = function () {
+            var a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = file + '.log';
+            a.click();
+        };
+    }
+
+    tabs.addEventListener('click', function (e) {
+        var btn = e.target.closest('.lp-tab');
+        if (!btn) return;
+        tabs.querySelectorAll('.lp-tab').forEach(function (t) { t.classList.remove('active'); });
+        btn.classList.add('active');
+        file = btn.dataset.f;
+        load();
+    });
+
+    search.addEventListener('input', render);
+    lines.addEventListener('change', load);
+
+    autoEl.addEventListener('change', function () {
+        clearInterval(timer);
+        if (autoEl.checked) timer = setInterval(load, 5000);
+    });
+
+    load();
+}());
+</script>
+</body>
+</html>

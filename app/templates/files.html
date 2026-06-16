@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Files · Hermes</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        html, body { margin: 0; padding: 0; }
+
+        .fp-bar {
+            height: 50px; border-bottom: 1px solid var(--border);
+            display: flex; align-items: center;
+            padding: 0 14px; gap: 10px;
+            background: var(--bg); position: sticky; top: 0; z-index: 5;
+        }
+        .fp-bar-title { font-weight: 700; font-size: 0.9rem; flex: 1; }
+        .fp-bar-links { display: flex; gap: 6px; }
+
+        .fp-body { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; }
+
+        /* breadcrumb */
+        .fp-crumb {
+            font-family: var(--mono); font-size: 0.76rem;
+            color: var(--text-2); margin-bottom: 14px;
+            display: flex; align-items: center; flex-wrap: wrap; gap: 3px;
+        }
+        .fp-crumb a { color: var(--accent); text-decoration: none; }
+        .fp-crumb a:hover { text-decoration: underline; }
+        .fp-crumb-sep { color: var(--text-3); padding: 0 2px; }
+
+        /* actions bar */
+        .fp-actions {
+            display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px;
+        }
+        .fp-input {
+            padding: 7px 11px; border-radius: var(--r-xs);
+            border: 1px solid var(--border-2);
+            background: var(--surface); color: var(--text);
+            font-family: var(--mono); font-size: 0.8rem; outline: none;
+        }
+        .fp-input:focus { border-color: var(--accent); }
+
+        /* drop zone */
+        .fp-drop {
+            border: 2px dashed var(--border-2);
+            border-radius: var(--r-sm);
+            padding: 20px; text-align: center;
+            font-size: 0.82rem; color: var(--text-2);
+            margin-bottom: 14px; cursor: pointer;
+            transition: border-color .15s, background .15s;
+        }
+        .fp-drop.over {
+            border-color: var(--accent-border);
+            background: var(--accent-dim);
+            color: var(--accent);
+        }
+
+        /* file list */
+        .fp-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.82rem;
+        }
+        .fp-table th {
+            font-family: var(--mono); font-size: 0.62rem;
+            letter-spacing: .1em; text-transform: uppercase;
+            color: var(--text-2); text-align: left;
+            padding: 6px 10px; border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        .fp-table td {
+            padding: 8px 10px; border-bottom: 1px solid var(--border);
+            vertical-align: middle;
+        }
+        .fp-table tr:last-child td { border-bottom: none; }
+        .fp-table tr:hover td { background: var(--surface-2); }
+
+        .fp-icon { font-size: 1rem; margin-right: 6px; }
+        .fp-name { color: var(--text); font-family: var(--mono); font-size: 0.8rem; }
+        .fp-dir  { color: var(--accent); cursor: pointer; }
+        .fp-dir:hover { text-decoration: underline; }
+        .fp-size { color: var(--text-2); font-family: var(--mono); font-size: 0.72rem; white-space: nowrap; }
+        .fp-date { color: var(--text-2); font-family: var(--mono); font-size: 0.72rem; white-space: nowrap; }
+
+        .fp-empty {
+            text-align: center; padding: 40px 20px;
+            color: var(--text-2); font-size: 0.82rem;
+        }
+
+        /* upload progress */
+        .fp-prog {
+            display: none; margin-top: 8px; height: 4px;
+            border-radius: 2px; background: var(--surface-2); overflow: hidden;
+        }
+        .fp-prog-fill { height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+        .fp-msg { font-size: 0.78rem; color: var(--green); margin-top: 6px; min-height: 1.2em; }
+    </style>
+</head>
+<body>
+
+    <div class="fp-bar">
+        <div class="fp-bar-title">Files</div>
+        <div class="fp-bar-links">
+            <a class="btn sm ghost" href="/agent">Agent</a>
+            <a class="btn sm ghost" href="/">Dashboard</a>
+        </div>
+    </div>
+
+    <div class="fp-body">
+
+        <!-- breadcrumb -->
+        <div class="fp-crumb" id="fpCrumb"></div>
+
+        <!-- actions -->
+        <div class="fp-actions">
+            <form id="mkdirForm" style="display:flex;gap:6px;">
+                <input class="fp-input" id="mkdirName" placeholder="new folder name" style="max-width:200px;">
+                <button class="btn sm" type="submit">+ Folder</button>
+            </form>
+        </div>
+
+        <!-- drop zone -->
+        <div class="fp-drop" id="fpDrop">
+            ↑ Drop files here to upload, or click to select
+            <input type="file" id="fpFileInput" multiple style="display:none;">
+        </div>
+        <div class="fp-prog" id="fpProg"><div class="fp-prog-fill" id="fpFill"></div></div>
+        <div class="fp-msg" id="fpMsg"></div>
+
+        <!-- file list -->
+        <table class="fp-table" id="fpTable">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Size</th>
+                    <th>Modified</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="fpBody">
+                <tr><td colspan="4"><div class="fp-empty">loading…</div></td></tr>
+            </tbody>
+        </table>
+
+    </div>
+
+<script>
+(function () {
+    var curPath = '';
+
+    function fmt(b) {
+        if (b == null) return '—';
+        var u = ['B','KB','MB','GB'], i = 0;
+        while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
+        return b.toFixed(i > 0 ? 1 : 0) + ' ' + u[i];
+    }
+
+    function fmtDate(ts) {
+        return new Date(ts * 1000).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    function buildCrumb(path) {
+        var el = document.getElementById('fpCrumb');
+        var parts = path ? path.split('/') : [];
+        var html = '<a href="#" data-p="">~</a>';
+        var acc = '';
+        parts.forEach(function (p) {
+            acc = acc ? acc + '/' + p : p;
+            html += '<span class="fp-crumb-sep">/</span><a href="#" data-p="' + acc + '">' + p + '</a>';
+        });
+        el.innerHTML = html;
+        el.querySelectorAll('a').forEach(function (a) {
+            a.addEventListener('click', function (e) { e.preventDefault(); navigate(a.dataset.p); });
+        });
+    }
+
+    function navigate(path) {
+        curPath = path || '';
+        load();
+    }
+
+    function load() {
+        fetch('/api/files/list?path=' + encodeURIComponent(curPath))
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                buildCrumb(d.path || '');
+                var tbody = document.getElementById('fpBody');
+                if (!d.items || d.items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4"><div class="fp-empty">No files here.</div></td></tr>';
+                    return;
+                }
+                tbody.innerHTML = d.items.map(function (it) {
+                    var icon = it.is_dir ? '📁' : '📄';
+                    var nameHtml = it.is_dir
+                        ? '<span class="fp-icon">' + icon + '</span><span class="fp-name fp-dir" data-p="' + it.path + '">' + it.name + '</span>'
+                        : '<span class="fp-icon">' + icon + '</span><span class="fp-name">' + it.name + '</span>';
+                    var dl = it.is_dir ? '' : '<a class="btn sm ghost" href="/api/files/download?path=' + encodeURIComponent(it.path) + '">↓</a>';
+                    return '<tr><td>' + nameHtml + '</td><td class="fp-size">' + fmt(it.size) + '</td><td class="fp-date">' + fmtDate(it.mtime) + '</td><td style="text-align:right;">' + dl + '</td></tr>';
+                }).join('');
+                tbody.querySelectorAll('.fp-dir').forEach(function (el) {
+                    el.addEventListener('click', function () { navigate(el.dataset.p); });
+                });
+            })
+            .catch(function (e) {
+                document.getElementById('fpBody').innerHTML = '<tr><td colspan="4"><div class="fp-empty">Error: ' + e + '</div></td></tr>';
+            });
+    }
+
+    /* mkdir */
+    document.getElementById('mkdirForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var name = document.getElementById('mkdirName').value.trim();
+        if (!name) return;
+        var newPath = curPath ? curPath + '/' + name : name;
+        var fd = new FormData();
+        fd.append('path', newPath);
+        fetch('/api/files/mkdir', { method: 'POST', body: fd })
+            .then(function () { document.getElementById('mkdirName').value = ''; load(); });
+    });
+
+    /* upload */
+    function upload(files) {
+        if (!files || !files.length) return;
+        var prog = document.getElementById('fpProg');
+        var fill = document.getElementById('fpFill');
+        var msg  = document.getElementById('fpMsg');
+        prog.style.display = 'block'; msg.textContent = '';
+        var done = 0;
+        Array.from(files).forEach(function (f) {
+            var fd = new FormData();
+            fd.append('path', curPath);
+            fd.append('file', f);
+            fetch('/api/files/upload', { method: 'POST', body: fd })
+                .then(function () {
+                    done++;
+                    fill.style.width = Math.round(done / files.length * 100) + '%';
+                    if (done === files.length) {
+                        msg.textContent = done + ' file(s) uploaded.';
+                        setTimeout(function () { prog.style.display = 'none'; fill.style.width = '0'; load(); }, 1500);
+                    }
+                })
+                .catch(function (e) { msg.textContent = 'Error: ' + e; });
+        });
+    }
+
+    var drop = document.getElementById('fpDrop');
+    var inp  = document.getElementById('fpFileInput');
+    drop.addEventListener('click', function () { inp.click(); });
+    inp.addEventListener('change',  function () { upload(inp.files); inp.value = ''; });
+    drop.addEventListener('dragover',  function (e) { e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', function ()  { drop.classList.remove('over'); });
+    drop.addEventListener('drop', function (e) {
+        e.preventDefault(); drop.classList.remove('over');
+        upload(e.dataTransfer.files);
+    });
+
+    load();
+}());
+</script>
+</body>
+</html>
