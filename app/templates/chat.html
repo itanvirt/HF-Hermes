@@ -17,9 +17,8 @@
         .cc-root {
             display: flex;
             height: 100vh;
-            height: 100dvh; /* iOS 15.4+ dynamic viewport */
+            height: 100dvh;
             position: relative;
-            z-index: 1;
         }
 
         /* ── Sidebar overlay (mobile) ── */
@@ -394,11 +393,12 @@
     </div>
 </div>
 
-<!-- OVERLAY BACKDROP (mobile sidebar) -->
-<div class="cc-overlay" id="ccOverlay"></div>
-
 <!-- MAIN APP -->
 <div class="cc-root" id="ccRoot" style="display:none;">
+
+    <!-- Overlay backdrop (mobile sidebar) — must be inside cc-root so its
+         z-index 39 is in the same stacking context as cc-side z-index 40 -->
+    <div class="cc-overlay" id="ccOverlay"></div>
 
     <!-- Sidebar -->
     <aside class="cc-side" id="ccSide">
