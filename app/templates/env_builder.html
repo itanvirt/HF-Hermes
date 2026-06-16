@@ -7,45 +7,511 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="page">
-        <div class="hero" style="margin-bottom:24px;">
-            <h1 style="font-size:2rem;">ENV Builder</h1>
-            <div class="subtitle"><a href="/" style="color:inherit;">&larr; back to dashboard</a></div>
-        </div>
 
-        {% if message %}<div class="message">{{ message }}</div>{% endif %}
-
-        <h3>Space secrets</h3>
-        <table class="env-table">
-            <tr><th>Secret</th><th>Status</th></tr>
-            {% for s in secrets_state %}
-            <tr>
-                <td>{{ s.name }}</td>
-                <td>{{ 'SET' if s.set else 'MISSING' }}</td>
-            </tr>
-            {% endfor %}
-        </table>
-        <p style="color:var(--text-dim); font-size:0.85rem;">
-            These come from this Space's Settings &rarr; Variables and secrets.
-            Edit them there, then click "Restart agent" below.
-        </p>
-
-        <h3>Hermes runtime config (<code>{{ env_path }}</code>)</h3>
-        <form method="post" action="/env-builder/save">
-            <textarea name="env_contents" spellcheck="false">{{ env_contents }}</textarea>
-            <div class="toolbar">
-                <button type="submit">Save</button>
-            </div>
-        </form>
-
-        <div class="toolbar">
-            <form method="post" action="/env-builder/reconfigure">
-                <button type="submit">Re-run configuration</button>
-            </form>
-            <form method="post" action="/env-builder/restart">
-                <button type="submit">Restart agent</button>
-            </form>
-        </div>
+<nav class="nav">
+    <div class="nav-brand">
+        <div class="nav-glyph"><div class="nav-glyph-dot"></div></div>
+        <span class="nav-name">Hermes Agent</span>
+        <div class="nav-sep"></div>
+        <span class="nav-tag">ENV Builder</span>
     </div>
+    <div class="spacer"></div>
+    <div class="nav-actions">
+        <a class="btn sm ghost" href="/">&larr; Dashboard</a>
+        <a class="btn sm ghost" href="/logout">Logout</a>
+    </div>
+</nav>
+
+<div class="eb-root">
+
+    <!-- SIDEBAR -->
+    <aside class="eb-nav">
+        <div class="eb-nav-lbl">Sections</div>
+        <div class="eb-nav-item active" data-target="sec-required">
+            <span>Required</span>
+            <span class="eb-nav-count">7</span>
+        </div>
+        <div class="eb-nav-item" data-target="sec-telegram">
+            <span>Telegram</span>
+            <span class="eb-nav-count">2</span>
+        </div>
+        <div class="eb-nav-item" data-target="sec-startup">
+            <span>Startup</span>
+            <span class="eb-nav-count">5</span>
+        </div>
+        <div class="eb-nav-item" data-target="sec-backup">
+            <span>Backup</span>
+            <span class="eb-nav-count">3</span>
+        </div>
+        <div class="eb-nav-item" data-target="sec-providers">
+            <span>Providers</span>
+            <span class="eb-nav-count">8</span>
+        </div>
+        <div class="eb-nav-item" data-target="sec-advanced">
+            <span>Advanced</span>
+            <span class="eb-nav-count">5</span>
+        </div>
+    </aside>
+
+    <!-- MAIN AREA: variable reference -->
+    <main class="eb-main">
+
+        <div class="eb-search-wrap">
+            <span class="eb-search-ico">&#9906;</span>
+            <input class="eb-search" type="search" id="varSearch" placeholder="Search variables&hellip;">
+        </div>
+
+        {% if message %}
+        <div id="toast" class="toast" style="position:relative;bottom:auto;right:auto;margin-bottom:20px;display:inline-block;">
+            {{ message }}
+        </div>
+        {% endif %}
+
+        <!-- Required secrets -->
+        <div class="eb-section" id="sec-required">
+            <div class="eb-section-hd">
+                <span class="eb-section-name">Required secrets</span>
+                <span class="badge critical">critical</span>
+                <span class="eb-section-info">Set in HF Space &rarr; Settings &rarr; Variables and secrets</span>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">HF_TOKEN <span class="badge critical">critical</span></div>
+                    <div class="eb-desc">Hugging Face token with write access. Used to auto-create and upload to the backup dataset.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="hf_&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">CLOUDFLARE_WORKERS_TOKEN <span class="badge critical">critical</span></div>
+                    <div class="eb-desc">Cloudflare API token with <em>Edit Workers</em> permission. Auto-deploys a Worker on first boot for keep-awake pings and Telegram API proxy.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="Cloudflare API token" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">TELEGRAM_BOT_TOKEN <span class="badge critical">critical</span></div>
+                    <div class="eb-desc">Bot token from @BotFather. Required to connect the Hermes gateway to Telegram.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="123456:ABC&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">TELEGRAM_ALLOWED_USERS <span class="badge critical">critical</span></div>
+                    <div class="eb-desc">Comma-separated Telegram user IDs allowed to send messages to the agent. Get your ID from @userinfobot.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="123456789,987654321" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">GATEWAY_TOKEN <span class="badge critical">critical</span></div>
+                    <div class="eb-desc">Shared secret protecting the terminal, ENV Builder, and <code>/v1/*</code> LLM relay. Use a long random string.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="long-random-string" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">LLM_MODEL <span class="badge required">required</span></div>
+                    <div class="eb-desc">Model identifier. Examples: <code>gemini-2.5-flash</code>, <code>gpt-4o</code>, <code>openrouter/google/gemini-2.5-flash</code>, <code>deepseek/deepseek-chat</code>, <code>xai/grok-4</code>.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="gemini-2.5-flash" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">LLM_API_KEY <span class="badge required">required</span></div>
+                    <div class="eb-desc">API key for the provider implied by <code>LLM_MODEL</code>. Auto-routed to the correct provider env var on boot.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="sk-&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+        </div>
+
+        <!-- Telegram -->
+        <div class="eb-section" id="sec-telegram">
+            <div class="eb-section-hd">
+                <span class="eb-section-name">Telegram</span>
+                <span class="badge feature">feature</span>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">TELEGRAM_MODE <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Delivery method. Leave unset for long-polling (default, recommended). Set to <code>webhook</code> for inbound webhook delivery instead.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="webhook  (default: long-polling)" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">TELEGRAM_WEBHOOK_SECRET <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Secret token Telegram sends in <code>X-Telegram-Bot-Api-Secret-Token</code>. Auto-generated on first boot if not provided.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="auto-generated" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+        </div>
+
+        <!-- Startup -->
+        <div class="eb-section" id="sec-startup">
+            <div class="eb-section-hd">
+                <span class="eb-section-name">Startup packages &amp; scripts</span>
+                <span class="badge feature">feature</span>
+                <span class="eb-section-info">Installed/run on every boot</span>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">STARTUP_APT_PACKAGES <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Space-separated apt packages to install on every boot. Example: <code>ffmpeg jq</code>.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="ffmpeg jq" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">STARTUP_PIP_PACKAGES <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Space-separated pip packages to install on every boot.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="requests pandas" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">STARTUP_NPM_PACKAGES <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Space-separated global npm packages to install on every boot.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="typescript" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">STARTUP_RUN <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Bash command(s) to run on every boot. For multi-line scripts use <code>STARTUP_RUN_BASE64</code>.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="mkdir -p /data" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">STARTUP_RUN_BASE64 <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Base64-encoded multi-line bash script run on every boot. Takes precedence over <code>STARTUP_RUN</code>.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="base64-encoded script" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+        </div>
+
+        <!-- Backup -->
+        <div class="eb-section" id="sec-backup">
+            <div class="eb-section-hd">
+                <span class="eb-section-name">State backup</span>
+                <span class="badge feature">feature</span>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">SYNC_INTERVAL <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Backup frequency in seconds. Default: <code>600</code> (10 minutes).</div>
+                </div>
+                <div class="eb-field">
+                    <input type="number" placeholder="600" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">BACKUP_DATASET_NAME <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Dataset repo name for backups. Owner is auto-detected from <code>HF_TOKEN</code>. Default: <code>hermes-backup</code>.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="hermes-backup" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">BACKUP_DATASET_REPO <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Full dataset repo ID (e.g. <code>myuser/my-backup</code>). Overrides <code>BACKUP_DATASET_NAME</code>.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="myuser/my-backup" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+        </div>
+
+        <!-- Providers -->
+        <div class="eb-section" id="sec-providers">
+            <div class="eb-section-hd">
+                <span class="eb-section-name">Provider API keys</span>
+                <span class="badge optional">optional</span>
+                <span class="eb-section-info">Set per-provider keys, or use comma-separated <code>*_KEYS</code> rotation pools</span>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">OPENROUTER_API_KEY <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">API key for OpenRouter (default fallback provider). Also accepts <code>OPENROUTER_API_KEYS</code> comma-separated pool.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="sk-or-&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">GOOGLE_API_KEY <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">API key for Google Gemini. Also accepts <code>GOOGLE_API_KEYS</code> for rotation.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="AIza&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">OPENAI_API_KEY <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">API key for OpenAI. Also accepts <code>OPENAI_API_KEYS</code> for rotation.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="sk-&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">ANTHROPIC_API_KEY <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">API key for Anthropic. Also accepts <code>ANTHROPIC_API_KEYS</code> for rotation.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="sk-ant-&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">DEEPSEEK_API_KEY <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">API key for DeepSeek. Also accepts <code>DEEPSEEK_API_KEYS</code> for rotation.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="sk-&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">XAI_API_KEY <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">API key for xAI (Grok). Also accepts <code>XAI_API_KEYS</code> for rotation.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="xai-&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">NVIDIA_API_KEY <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">API key for NVIDIA NIM. Also accepts <code>NVIDIA_API_KEYS</code> for rotation.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="nvapi-&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">HF_INFERENCE_TOKEN <span class="badge optional">optional</span></div>
+                    <div class="eb-desc">Hugging Face Inference API token for <code>hf/*</code> model IDs. Can reuse your <code>HF_TOKEN</code>.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="password" placeholder="hf_&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced -->
+        <div class="eb-section" id="sec-advanced">
+            <div class="eb-section-hd">
+                <span class="eb-section-name">Advanced</span>
+                <span class="badge advanced">advanced</span>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">CLOUDFLARE_KEEPALIVE_ENABLED <span class="badge advanced">advanced</span></div>
+                    <div class="eb-desc">Set to <code>false</code> to deploy the Worker (Telegram proxy) without the keep-awake cron trigger. Default: <code>true</code>.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="true" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">CLOUDFLARE_ACCOUNT_ID <span class="badge advanced">advanced</span></div>
+                    <div class="eb-desc">Override the Cloudflare account ID if your token has access to multiple accounts. Auto-detected otherwise.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="text" placeholder="auto-detected" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">GATEWAY_RESTART_DELAY <span class="badge advanced">advanced</span></div>
+                    <div class="eb-desc">Seconds to wait between gateway restarts on crash. Default: <code>5</code>.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="number" placeholder="5" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">GATEWAY_MAX_RESTARTS <span class="badge advanced">advanced</span></div>
+                    <div class="eb-desc">Maximum restart attempts after crashes. <code>0</code> means unlimited. Default: <code>0</code>.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="number" placeholder="0" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+
+            <div class="eb-row">
+                <div>
+                    <div class="eb-key">WEBHOOK_URL <span class="badge advanced">advanced</span></div>
+                    <div class="eb-desc">URL to POST to on each gateway restart. Receives a JSON body with <code>event</code> and <code>space</code> fields.</div>
+                </div>
+                <div class="eb-field">
+                    <input type="url" placeholder="https://&hellip;" disabled title="Set in HF Secrets UI">
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- RIGHT PANEL -->
+    <aside class="eb-panel">
+
+        <!-- Space secrets status -->
+        <div class="panel-card">
+            <div class="panel-lbl">Space secrets</div>
+            {% for s in secrets_state %}
+            <div class="secret-row">
+                <span>{{ s.name }}</span>
+                {% if s.set %}
+                <span class="secret-ok">&#10003; SET</span>
+                {% else %}
+                <span class="secret-miss">&#10007; MISSING</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- .env editor -->
+        <div class="panel-card" style="flex:1;display:flex;flex-direction:column;min-height:0;">
+            <div class="panel-lbl">
+                Runtime env &nbsp;
+                <code style="font-size:.62rem;color:var(--text-2);word-break:break-all;">{{ env_path }}</code>
+            </div>
+            <form method="post" action="/env-builder/save" style="flex:1;display:flex;flex-direction:column;gap:8px;min-height:0;">
+                <textarea class="env-preview" name="env_contents" style="flex:1;min-height:100px;max-height:none;" spellcheck="false">{{ env_contents }}</textarea>
+                <button class="btn primary sm" type="submit" style="justify-content:center;">Save .env</button>
+            </form>
+        </div>
+
+        <!-- Actions -->
+        <div class="panel-card">
+            <div class="panel-lbl">Actions</div>
+            <div class="panel-actions">
+                <form method="post" action="/env-builder/reconfigure">
+                    <button class="btn sm" type="submit" style="width:100%;justify-content:center;">Re-run configuration</button>
+                </form>
+                <form method="post" action="/env-builder/restart">
+                    <button class="btn sm danger" type="submit" style="width:100%;justify-content:center;">Restart gateway</button>
+                </form>
+            </div>
+        </div>
+
+    </aside>
+
+</div>
+
+<script>
+(function () {
+    // sidebar active tracking via IntersectionObserver
+    var navItems = document.querySelectorAll('.eb-nav-item[data-target]');
+    var sections = document.querySelectorAll('.eb-section');
+
+    if ('IntersectionObserver' in window) {
+        var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (e) {
+                if (e.isIntersecting) {
+                    navItems.forEach(function (n) { n.classList.remove('active'); });
+                    var active = document.querySelector('.eb-nav-item[data-target="' + e.target.id + '"]');
+                    if (active) active.classList.add('active');
+                }
+            });
+        }, { threshold: 0.25 });
+        sections.forEach(function (s) { io.observe(s); });
+    }
+
+    navItems.forEach(function (item) {
+        item.addEventListener('click', function () {
+            var target = document.getElementById(item.dataset.target);
+            if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+
+    // search
+    var search = document.getElementById('varSearch');
+    if (search) {
+        search.addEventListener('input', function () {
+            var q = search.value.toLowerCase();
+            document.querySelectorAll('.eb-row').forEach(function (row) {
+                row.style.display = row.textContent.toLowerCase().indexOf(q) !== -1 ? '' : 'none';
+            });
+            sections.forEach(function (sec) {
+                var visible = sec.querySelectorAll('.eb-row:not([style*="none"])');
+                sec.style.display = visible.length ? '' : 'none';
+            });
+        });
+    }
+
+    // auto-dismiss toast
+    var toast = document.getElementById('toast');
+    if (toast) setTimeout(function () { toast.style.opacity = '0'; toast.style.transition = 'opacity .4s'; }, 3500);
+}());
+</script>
 </body>
 </html>

@@ -3,23 +3,36 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Hermes Agent · Login</title>
+    <title>Login · Hermes Agent</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <div class="auth-box">
-        <h2>Gateway Token</h2>
-        {% if not configured %}
-        <p class="error">GATEWAY_TOKEN is not set for this Space. Add it under Settings &rarr; Variables and secrets, then restart.</p>
-        {% endif %}
-        {% if error %}
-        <p class="error">{{ error }}</p>
-        {% endif %}
-        <form method="post" action="/login">
-            <input type="hidden" name="next" value="{{ next }}">
-            <input type="password" name="token" placeholder="Enter GATEWAY_TOKEN" autofocus>
-            <button type="submit">Unlock</button>
-        </form>
+    <div class="auth-wrap">
+        <div class="auth-card">
+            <div class="auth-brand">
+                <div class="auth-glyph"><div class="auth-glyph-dot"></div></div>
+                <span class="auth-brand-name">Hermes Agent</span>
+            </div>
+
+            <div class="auth-h">Authenticate</div>
+            <div class="auth-sub">Enter your GATEWAY_TOKEN to access the dashboard.</div>
+
+            {% if not configured %}
+            <div class="auth-err">
+                GATEWAY_TOKEN is not set. Add it under Settings &rarr; Variables and secrets, then restart the Space.
+            </div>
+            {% endif %}
+
+            {% if error %}
+            <div class="auth-err">{{ error }}</div>
+            {% endif %}
+
+            <form method="post" action="/login">
+                <input type="hidden" name="next" value="{{ next }}">
+                <input class="auth-input" type="password" name="token" placeholder="GATEWAY_TOKEN" autofocus autocomplete="current-password">
+                <button class="btn primary" type="submit" style="width:100%;justify-content:center;">Unlock &rarr;</button>
+            </form>
+        </div>
     </div>
 </body>
 </html>
