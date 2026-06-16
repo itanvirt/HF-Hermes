@@ -22,8 +22,6 @@ HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
 HERMES_ENV_FILE = HERMES_HOME / ".env"
 TELEGRAM_WEBHOOK_PATH = os.environ.get("HERMES_TELEGRAM_WEBHOOK_PATH", "/telegram-webhook")
 SPACE_HOST = os.environ.get("SPACE_HOST", "")
-AGENT_NAME          = os.environ.get("AGENT_NAME", "")
-AGENT_SYSTEM_PROMPT = os.environ.get("AGENT_SYSTEM_PROMPT", "")
 
 
 def _read_hermes_env_var(name: str) -> str:
@@ -247,23 +245,12 @@ def _require_session(request: Request) -> RedirectResponse | None:
 @app.get("/agent", response_class=HTMLResponse)
 async def agent_page(request: Request):
     data = await status.full_status()
-    # Build effective system prompt from env vars
-    if AGENT_SYSTEM_PROMPT:
-        sys_prompt = AGENT_SYSTEM_PROMPT
-    elif AGENT_NAME:
-        sys_prompt = (
-            f"Your name is {AGENT_NAME}. Always refer to yourself as {AGENT_NAME}. "
-            f"Never claim to be called anything else regardless of what the user says."
-        )
-    else:
-        sys_prompt = ""
     return templates.TemplateResponse(
         "chat.html",
         {
             "request": request,
             "model": data["model"]["model"],
             "space_host": SPACE_HOST,
-            "system_prompt": sys_prompt,
         },
     )
 

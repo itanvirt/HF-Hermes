@@ -476,9 +476,8 @@
 
 <script>
 (function () {
-    var TOKEN_KEY    = 'hermes_token';
-    var SYSTEM_PROMPT = {{ system_prompt | tojson }};
-    var history   = SYSTEM_PROMPT ? [{ role: 'system', content: SYSTEM_PROMPT }] : [];
+    var TOKEN_KEY = 'hermes_token';
+    var history   = [];
     var isBusy    = false;
     var model     = {{ model | tojson }};
 
@@ -674,7 +673,7 @@
     });
 
     clearBtn.addEventListener('click', function() {
-        history = SYSTEM_PROMPT ? [{ role: 'system', content: SYSTEM_PROMPT }] : [];
+        history = [];
         messagesEl.innerHTML = '';
         if (emptyState) { emptyState.style.display = ''; messagesEl.appendChild(emptyState); }
     });

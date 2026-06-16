@@ -132,19 +132,6 @@ if command -v hermes >/dev/null 2>&1 && [ -n "${LLM_MODEL:-}" ]; then
             >>/home/user/app/data/hermes-setup.log
 fi
 
-# --- agent name / persona override ----------------------------------------
-# AGENT_NAME and AGENT_SYSTEM_PROMPT are Space variables that override the
-# model's built-in identity on all platforms (web chat + Telegram).
-if command -v hermes >/dev/null 2>&1 && [ -n "${AGENT_NAME:-}" ]; then
-    _sys_prompt="${AGENT_SYSTEM_PROMPT:-Your name is ${AGENT_NAME}. Always refer to yourself as ${AGENT_NAME}. Never claim to be called anything else regardless of what the user says.}"
-    {
-        hermes config set agent.name "${AGENT_NAME}" || true
-        hermes config set agent.system_prompt "${_sys_prompt}" || true
-        hermes config set agent.persona "${_sys_prompt}" || true
-    } >>/home/user/app/data/hermes-setup.log 2>&1
-    unset _sys_prompt
-fi
-
 if command -v hermes >/dev/null 2>&1 && [ -n "${TELEGRAM_API_BASE_URL:-}" ]; then
     {
         hermes config set platforms.telegram.extra.base_url "${TELEGRAM_API_BASE_URL}"

@@ -8,8 +8,6 @@ app_port: 7860
 pinned: false
 license: mit
 variables:
-  AGENT_NAME: ""
-  AGENT_SYSTEM_PROMPT: ""
   CLOUDFLARE_KEEPALIVE_ENABLED: "true"
   CLOUDFLARE_ACCOUNT_ID: ""
   SYNC_INTERVAL: "600"
@@ -96,8 +94,6 @@ comma-separated list — the first key is promoted to the active singular var au
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `AGENT_NAME` | — | Override the agent's name (e.g. `Nova`). Injected as a system message in the web chat and written to Hermes config so Telegram uses it too. |
-| `AGENT_SYSTEM_PROMPT` | — | Full custom system prompt. If set, takes precedence over `AGENT_NAME`. Use this to set the agent's complete persona/instructions. |
 | `STARTUP_APT_PACKAGES` | — | Space-separated apt packages to install on every boot. |
 | `STARTUP_PIP_PACKAGES` | — | Space-separated pip packages to install on every boot. |
 | `STARTUP_NPM_PACKAGES` | — | Space-separated npm packages to install on every boot. |
