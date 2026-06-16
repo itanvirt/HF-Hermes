@@ -93,16 +93,22 @@ def run_backup() -> dict:
             os.unlink(archive_path)
 
         # Save priority files as plain files for fast cold-start restore
+        import shutil as _shutil
         for local_rel, remote_rel in PRIORITY_FILES:
             local = HERMES_HOME / local_rel
-            # Fallback: Hermes agent sometimes writes SOUL.md into workspace/
-            # instead of the root; capture it from there if the root copy is missing.
+            # Agent writes SOUL.md to unpredictable locations; check all known
+            # wrong paths and promote to the correct one before uploading.
             if local_rel == "SOUL.md" and (not local.exists() or local.stat().st_size == 0):
-                workspace_copy = HERMES_HOME / "workspace" / "SOUL.md"
-                if workspace_copy.exists() and workspace_copy.stat().st_size > 0:
-                    import shutil
-                    shutil.copy2(workspace_copy, local)
-                    logger.info("Promoted workspace/SOUL.md → SOUL.md for backup")
+                for candidate in [
+                    HERMES_HOME / "workspace" / "SOUL.md",
+                    Path.home() / "SOUL.md",
+                    Path.home() / ".hermes" / "workspace" / "SOUL.md",
+                ]:
+                    if candidate.exists() and candidate.stat().st_size > 0:
+                        local.parent.mkdir(parents=True, exist_ok=True)
+                        _shutil.copy2(candidate, local)
+                        logger.info("Promoted %s → SOUL.md for backup", candidate)
+                        break
             if local.exists() and local.stat().st_size > 0:
                 try:
                     api.upload_file(

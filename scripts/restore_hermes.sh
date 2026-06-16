@@ -59,12 +59,16 @@ for remote, local in PRIORITY:
             local.parent.mkdir(parents=True, exist_ok=True)
             local.write_bytes(Path(src).read_bytes())
             print(f"Restored priority file: {local.name}")
-            # Mirror SOUL.md into workspace/ so the agent finds it at
-            # the path it sometimes writes to (/workspace/SOUL.md).
+            # Mirror SOUL.md to all paths the agent might write to,
+            # so it finds the persona wherever it looks next time.
             if local.name == "SOUL.md":
-                workspace_copy = hermes_home / "workspace" / "SOUL.md"
-                workspace_copy.parent.mkdir(parents=True, exist_ok=True)
-                workspace_copy.write_bytes(local.read_bytes())
+                data = local.read_bytes()
+                for mirror in [
+                    hermes_home / "workspace" / "SOUL.md",
+                    Path.home() / "SOUL.md",
+                ]:
+                    mirror.parent.mkdir(parents=True, exist_ok=True)
+                    mirror.write_bytes(data)
         except Exception as ex:
             print(f"Could not restore {remote}: {ex}")
 

@@ -152,9 +152,11 @@ if [ -f "$SOUL_DEFAULT" ]; then
     SOUL_ACTIVE=$(sed 's/<!--.*-->//g' "$SOUL_FILE" 2>/dev/null | tr -d '[:space:]')
     if [ -z "$SOUL_ACTIVE" ]; then
         cp "$SOUL_DEFAULT" "$SOUL_FILE"
-        # Also seed workspace/ path that Hermes agent sometimes writes to
+        # Mirror to paths the agent commonly writes to so it finds the
+        # persona regardless of where it searches or writes next time.
         mkdir -p "$HERMES_HOME/workspace"
         cp "$SOUL_DEFAULT" "$HERMES_HOME/workspace/SOUL.md"
+        cp "$SOUL_DEFAULT" "$HOME/SOUL.md"
         echo "[configure_hermes] seeded SOUL.md from default." >>/home/user/app/data/hermes-setup.log
     fi
 fi
