@@ -12,4 +12,6 @@ bash /home/user/app/scripts/configure_cloudflare.sh || true
 
 bash /home/user/app/scripts/configure_hermes.sh
 
+bash /home/user/app/scripts/configure_startup.sh || true
+
 exec supervisord -c /home/user/app/supervisord.conf

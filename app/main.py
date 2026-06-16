@@ -32,6 +32,38 @@ def _read_hermes_env_var(name: str) -> str:
 
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET") or _read_hermes_env_var("TELEGRAM_WEBHOOK_SECRET")
 
+# Provider API bases for the /v1/* relay. The active provider and its key are
+# read from ~/.hermes/.env (written by configure_hermes.sh on every boot).
+_PROVIDER_API_BASE = {
+    "google": "https://generativelanguage.googleapis.com",
+    "openai": "https://api.openai.com",
+    "anthropic": "https://api.anthropic.com",
+    "openrouter": "https://openrouter.ai/api",
+    "deepseek": "https://api.deepseek.com",
+    "xai": "https://api.x.ai",
+    "nvidia": "https://integrate.api.nvidia.com",
+    "huggingface": "https://router.huggingface.co",
+}
+_PROVIDER_KEY_VAR = {
+    "google": "GOOGLE_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "xai": "XAI_API_KEY",
+    "nvidia": "NVIDIA_API_KEY",
+    "huggingface": "HF_INFERENCE_TOKEN",
+}
+
+
+def _active_llm_upstream() -> tuple[str, str]:
+    provider = _read_hermes_env_var("HERMES_PROVIDER") or "openrouter"
+    key_var = _PROVIDER_KEY_VAR.get(provider, "OPENROUTER_API_KEY")
+    key = os.environ.get(key_var) or _read_hermes_env_var(key_var)
+    base = _PROVIDER_API_BASE.get(provider, "https://openrouter.ai/api")
+    return base, key
+
+
 app = FastAPI(title="Hermes Agent")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
@@ -230,6 +262,45 @@ async def env_builder_restart(request: Request):
         return redirect
     subprocess.run(["supervisorctl", "restart", "hermes-gateway"], check=False)
     return RedirectResponse(url="/env-builder?message=Restarted", status_code=302)
+
+
+# --------------------------------------------------------------------------
+# OpenAI-compatible LLM relay (Bearer GATEWAY_TOKEN required)
+#
+# Forwards /v1/* to the configured LLM provider's API, substituting your
+# real API key. Lets any OpenAI-compatible client use this Space as a
+# remote AI backend (e.g. point VS Code extension or LLM tools at
+# https://<space>.hf.space/v1) without exposing the key directly.
+# --------------------------------------------------------------------------
+@app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+async def v1_relay(path: str, request: Request):
+    if not auth.verify_bearer(request.headers.get("authorization")):
+        return PlainTextResponse("unauthorized", status_code=401)
+    base_url, api_key = _active_llm_upstream()
+    upstream_url = f"{base_url}/v1/{path}"
+    body = await request.body()
+    forward_headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in {"host", "authorization", "content-length"}
+    }
+    if api_key:
+        forward_headers["authorization"] = f"Bearer {api_key}"
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            upstream = await client.request(
+                request.method,
+                upstream_url,
+                params=dict(request.query_params),
+                content=body,
+                headers=forward_headers,
+            )
+    except httpx.ConnectError:
+        return PlainTextResponse("upstream LLM API unavailable", status_code=503)
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        media_type=upstream.headers.get("content-type"),
+    )
 
 
 # --------------------------------------------------------------------------

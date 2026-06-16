@@ -15,28 +15,66 @@ fi
 
 # --- map LLM_MODEL -> provider id + the API key env var Hermes expects ----
 case "${LLM_MODEL:-}" in
-    gemini*|*gemini*)
+    gemini*|*gemini*|google/*)
         HERMES_PROVIDER="google"
-        export GOOGLE_API_KEY="${LLM_API_KEY:-}"
+        export GOOGLE_API_KEY="${GOOGLE_API_KEY:-${LLM_API_KEY:-}}"
         ;;
-    gpt-*|o1*|o3*|o4*|*openai*)
+    gpt-*|o1*|o3*|o4*|*openai*|openai/*)
         HERMES_PROVIDER="openai"
-        export OPENAI_API_KEY="${LLM_API_KEY:-}"
+        export OPENAI_API_KEY="${OPENAI_API_KEY:-${LLM_API_KEY:-}}"
         ;;
-    claude*|*anthropic*)
+    claude*|*anthropic*|anthropic/*)
         HERMES_PROVIDER="anthropic"
-        export ANTHROPIC_API_KEY="${LLM_API_KEY:-}"
+        export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-${LLM_API_KEY:-}}"
         ;;
     openrouter/*|*openrouter*)
         HERMES_PROVIDER="openrouter"
-        export OPENROUTER_API_KEY="${LLM_API_KEY:-}"
+        export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-${LLM_API_KEY:-}}"
+        ;;
+    deepseek/*|*deepseek*)
+        HERMES_PROVIDER="deepseek"
+        export DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-${LLM_API_KEY:-}}"
+        ;;
+    xai/*|grok/*)
+        HERMES_PROVIDER="xai"
+        export XAI_API_KEY="${XAI_API_KEY:-${LLM_API_KEY:-}}"
+        ;;
+    nvidia/*)
+        HERMES_PROVIDER="nvidia"
+        export NVIDIA_API_KEY="${NVIDIA_API_KEY:-${LLM_API_KEY:-}}"
+        ;;
+    huggingface/*|hf/*)
+        HERMES_PROVIDER="huggingface"
+        export HF_INFERENCE_TOKEN="${HF_INFERENCE_TOKEN:-${LLM_API_KEY:-${HF_TOKEN:-}}}"
         ;;
     *)
-        # Unknown prefix: assume an OpenRouter-style "vendor/model" id.
+        # Unknown/vendor prefix (e.g. "mistral/", "kimi/") — route through
+        # OpenRouter which supports virtually every model via its prefix format.
         HERMES_PROVIDER="openrouter"
         export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-${LLM_API_KEY:-}}"
         ;;
 esac
+
+# --- API key pool rotation ------------------------------------------------
+# If a *_KEYS pool var is set (comma-separated values), promote the first
+# key to the singular var Hermes reads. Lets you supply multiple keys for
+# load-sharing or rate-limit avoidance without changing the rest of the config.
+for _pair in \
+    "OPENROUTER_API_KEYS:OPENROUTER_API_KEY" \
+    "ANTHROPIC_API_KEYS:ANTHROPIC_API_KEY" \
+    "OPENAI_API_KEYS:OPENAI_API_KEY" \
+    "GOOGLE_API_KEYS:GOOGLE_API_KEY" \
+    "DEEPSEEK_API_KEYS:DEEPSEEK_API_KEY" \
+    "XAI_API_KEYS:XAI_API_KEY" \
+    "NVIDIA_API_KEYS:NVIDIA_API_KEY"; do
+    _pool_var="${_pair%%:*}"
+    _single_var="${_pair##*:}"
+    _pool="${!_pool_var:-}"
+    if [ -n "$_pool" ]; then
+        export "${_single_var}=${_pool%%,*}"
+    fi
+done
+unset _pair _pool_var _single_var _pool
 
 # --- Telegram Bot API proxy (via Cloudflare Worker, see configure_cloudflare.sh) ---
 # If configure_cloudflare.sh deployed a reverse proxy for api.telegram.org
@@ -68,19 +106,23 @@ GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
 OPENAI_API_KEY=${OPENAI_API_KEY:-}
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
 OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+XAI_API_KEY=${XAI_API_KEY:-}
+NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+HF_INFERENCE_TOKEN=${HF_INFERENCE_TOKEN:-}
 TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
 TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
 TELEGRAM_WEBHOOK_URL=${TELEGRAM_WEBHOOK_URL:-}
 TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
 TELEGRAM_WEBHOOK_PORT=${TELEGRAM_WEBHOOK_PORT:-}
+HERMES_PROVIDER=${HERMES_PROVIDER}
 EOF
 chmod 600 "$HERMES_HOME/.env"
 
-# --- non-interactive model selection ---------------------------------------
+# --- non-interactive model + provider selection ---------------------------
 # `hermes config set` writes non-secret settings to ~/.hermes/config.yaml.
-# Best-effort: logs failures instead of failing the container start, so the
-# operator can finish configuration from the in-browser terminal
-# ("Open Hermes Agent" / "Open Terminal" -> `hermes config` / `hermes model`).
+# Best-effort: logs failures so the operator can finish configuration from
+# the in-browser terminal.
 if command -v hermes >/dev/null 2>&1 && [ -n "${LLM_MODEL:-}" ]; then
     {
         hermes config set model.default "${LLM_MODEL}"

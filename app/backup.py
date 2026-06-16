@@ -17,7 +17,14 @@ from app.status import BACKUP_STATE_FILE
 logger = logging.getLogger("hermes.backup")
 
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
-BACKUP_INTERVAL_HOURS = float(os.environ.get("BACKUP_INTERVAL_HOURS", "6"))
+
+# SYNC_INTERVAL (seconds, default 600 = 10 min) is checked first;
+# BACKUP_INTERVAL_HOURS is kept for backward compatibility.
+_hours_override = os.environ.get("BACKUP_INTERVAL_HOURS")
+SYNC_INTERVAL_SECS = (
+    float(_hours_override) * 3600 if _hours_override
+    else float(os.environ.get("SYNC_INTERVAL", "600"))
+)
 
 # Files that must never leave the container.
 EXCLUDE_NAMES = {".env", "credentials.json", "secrets.json"}
@@ -33,8 +40,8 @@ def _dataset_repo_id(api: HfApi, token: str) -> str:
     if custom:
         return custom
     who = api.whoami(token=token)
-    username = who["name"]
-    return f"{username}/hermes-backup"
+    name = os.environ.get("BACKUP_DATASET_NAME", "hermes-backup")
+    return f"{who['name']}/{name}"
 
 
 def _tar_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
@@ -96,7 +103,7 @@ def start_scheduler(scheduler) -> None:
     scheduler.add_job(
         run_backup,
         "interval",
-        hours=BACKUP_INTERVAL_HOURS,
+        seconds=SYNC_INTERVAL_SECS,
         next_run_time=datetime.now(timezone.utc),
         id="hermes-backup",
         replace_existing=True,

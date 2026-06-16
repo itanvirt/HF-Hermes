@@ -132,21 +132,25 @@ if [ "$DEPLOY_CODE" != "200" ]; then
     exit 0
 fi
 
-SCHEDULE_CODE=$(curl -sS -o /tmp/cloudflare-schedule.json -w '%{http_code}' --max-time 20 -X PUT \
-    -H "Authorization: Bearer ${CLOUDFLARE_WORKERS_TOKEN}" \
-    -H "Content-Type: application/json" \
-    "$API/accounts/$ACCOUNT_ID/workers/scripts/$WORKER_NAME/schedules" \
-    -d '[{"cron":"*/10 * * * *"}]')
-cat /tmp/cloudflare-schedule.json >>"$LOG"
-echo >>"$LOG"
-
-if [ "$SCHEDULE_CODE" != "200" ]; then
-    DETAIL=$(api_error /tmp/cloudflare-schedule.json "$SCHEDULE_CODE")
-    echo "[cloudflare] Worker schedule failed: $DETAIL" >>"$LOG"
-    write_state "keepawake" "error" "$WORKER_NAME" "$TARGET" "schedule: $DETAIL"
+if [ "${CLOUDFLARE_KEEPALIVE_ENABLED:-true}" = "false" ]; then
+    echo "[cloudflare] keep-awake cron disabled (CLOUDFLARE_KEEPALIVE_ENABLED=false)." >>"$LOG"
+    write_state "keepawake" "disabled" "$WORKER_NAME" "$TARGET" ""
 else
-    echo "[cloudflare] deployed Worker '$WORKER_NAME' pinging $TARGET every 10 min." >>"$LOG"
-    write_state "keepawake" "configured" "$WORKER_NAME" "$TARGET" ""
+    SCHEDULE_CODE=$(curl -sS -o /tmp/cloudflare-schedule.json -w '%{http_code}' --max-time 20 -X PUT \
+        -H "Authorization: Bearer ${CLOUDFLARE_WORKERS_TOKEN}" \
+        -H "Content-Type: application/json" \
+        "$API/accounts/$ACCOUNT_ID/workers/scripts/$WORKER_NAME/schedules" \
+        -d '[{"cron":"*/10 * * * *"}]')
+    cat /tmp/cloudflare-schedule.json >>"$LOG"
+    echo >>"$LOG"
+    if [ "$SCHEDULE_CODE" != "200" ]; then
+        DETAIL=$(api_error /tmp/cloudflare-schedule.json "$SCHEDULE_CODE")
+        echo "[cloudflare] Worker schedule failed: $DETAIL" >>"$LOG"
+        write_state "keepawake" "error" "$WORKER_NAME" "$TARGET" "schedule: $DETAIL"
+    else
+        echo "[cloudflare] deployed Worker '$WORKER_NAME' pinging $TARGET every 10 min." >>"$LOG"
+        write_state "keepawake" "configured" "$WORKER_NAME" "$TARGET" ""
+    fi
 fi
 
 # --- Telegram Bot API proxy (only if a bot is configured) -----------------

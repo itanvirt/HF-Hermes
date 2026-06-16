@@ -57,15 +57,24 @@ async def gateway_status() -> dict:
 
 def model_status() -> dict:
     model = os.environ.get("LLM_MODEL", "")
-    provider = "unknown"
     lowered = model.lower()
-    if "gemini" in lowered:
-        provider = "gemini"
-    elif lowered.startswith("gpt") or "openai" in lowered:
+    if "gemini" in lowered or lowered.startswith("google/"):
+        provider = "google"
+    elif lowered.startswith("gpt") or "openai" in lowered or lowered.startswith("openai/"):
         provider = "openai"
-    elif "claude" in lowered or "anthropic" in lowered:
+    elif "claude" in lowered or "anthropic" in lowered or lowered.startswith("anthropic/"):
         provider = "anthropic"
-    elif "openrouter" in lowered:
+    elif "openrouter" in lowered or lowered.startswith("openrouter/"):
+        provider = "openrouter"
+    elif lowered.startswith("deepseek/") or "deepseek" in lowered:
+        provider = "deepseek"
+    elif lowered.startswith("xai/") or lowered.startswith("grok/"):
+        provider = "xai"
+    elif lowered.startswith("nvidia/"):
+        provider = "nvidia"
+    elif lowered.startswith("huggingface/") or lowered.startswith("hf/"):
+        provider = "huggingface"
+    else:
         provider = "openrouter"
     return {
         "model": model or "not configured",
