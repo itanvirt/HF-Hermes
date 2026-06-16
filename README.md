@@ -9,6 +9,7 @@ pinned: false
 license: mit
 variables:
   CLOUDFLARE_KEEPALIVE_ENABLED: "true"
+  CLOUDFLARE_ACCOUNT_ID: ""
   SYNC_INTERVAL: "600"
   BACKUP_DATASET_NAME: "hermes-backup"
   GATEWAY_RESTART_DELAY: "5"
@@ -64,7 +65,7 @@ after) duplicating:
 | Secret | Description |
 | --- | --- |
 | `HF_TOKEN` | Hugging Face token (write access) — used for the automatic backup dataset. |
-| `CLOUDFLARE_WORKERS_TOKEN` | Cloudflare API token with "Edit Cloudflare Workers" permission. The container uses this to auto-deploy a Worker on first boot that pings `/health` (keep-awake) and proxies Telegram's API (so the bot connects even if this network blocks `api.telegram.org` directly) — no manual steps. |
+| `CLOUDFLARE_WORKERS_TOKEN` | Cloudflare API token with "Edit Cloudflare Workers" permission. The container uses this to auto-deploy a Worker on first boot that pings `/health` (keep-awake) and proxies Telegram's API. Also set `CLOUDFLARE_ACCOUNT_ID` (see optional variables below) for reliable deployment. |
 | `TELEGRAM_ALLOWED_USERS` | Comma-separated Telegram user IDs allowed to message the agent. |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from `@BotFather`. |
 | `GATEWAY_TOKEN` | Shared secret protecting the terminal, ENV Builder, and the `/v1/*` LLM relay. Use a long random string. |
@@ -99,8 +100,8 @@ comma-separated list — the first key is promoted to the active singular var au
 | `STARTUP_RUN` | — | Bash commands to run on every boot (use `STARTUP_RUN_BASE64` for multi-line). |
 | `SYNC_INTERVAL` | `600` | Backup frequency in seconds. |
 | `BACKUP_DATASET_NAME` | `hermes-backup` | Dataset name for backups (owner is auto-detected from `HF_TOKEN`). |
+| `CLOUDFLARE_ACCOUNT_ID` | — | Your Cloudflare account ID (Cloudflare dashboard → Workers & Pages → right sidebar). Required for the keep-awake Worker to deploy. The container will try to auto-detect it from your token, but setting it explicitly is more reliable. |
 | `CLOUDFLARE_KEEPALIVE_ENABLED` | `true` | Set to `false` to deploy the Worker (for Telegram proxy) without the keep-awake cron. |
-| `CLOUDFLARE_ACCOUNT_ID` | — | Override Cloudflare account ID if your token has access to multiple accounts. |
 | `GATEWAY_RESTART_DELAY` | `5` | Seconds to wait between gateway restarts. |
 | `GATEWAY_MAX_RESTARTS` | `0` | Max gateway restart attempts (0 = unlimited). |
 | `WEBHOOK_URL` | — | URL to POST to on each gateway restart (JSON body with `event` and `space`). |
