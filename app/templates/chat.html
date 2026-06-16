@@ -37,7 +37,7 @@
             width: 240px;
             flex-shrink: 0;
             border-right: 1px solid var(--border);
-            background: var(--surface);
+            background: #141828;
             display: flex;
             flex-direction: column;
             padding: 0;
@@ -103,14 +103,15 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 12px 18px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--text);
+            padding: 13px 18px;
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: #e8eeff;
             cursor: pointer;
             border-left: 3px solid transparent;
             transition: background .12s, color .12s, border-color .12s;
             text-decoration: none;
+            min-height: 48px;
         }
         .cc-side-item:hover { background: var(--surface-3); color: #fff; }
         .cc-side-item.active {
@@ -118,7 +119,29 @@
             border-left-color: var(--accent);
             background: var(--accent-dim);
         }
-        .cc-side-icon { font-size: 1rem; flex-shrink: 0; line-height: 1; }
+        .cc-side-icon { font-size: 1.05rem; flex-shrink: 0; line-height: 1; }
+
+        /* Close button inside sidebar (mobile only) */
+        .cc-side-close {
+            display: none;
+            margin-left: auto;
+            background: transparent;
+            border: none;
+            color: #a0aec0;
+            font-size: 1.2rem;
+            width: 36px;
+            height: 36px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: var(--r-xs);
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .cc-side-close:hover { background: var(--surface-2); color: #fff; }
+        @media (max-width: 640px) {
+            .cc-side-close { display: flex; }
+        }
 
         .cc-model-box {
             margin: 0 12px 12px;
@@ -167,15 +190,17 @@
             display: none;
             background: transparent;
             border: none;
-            color: var(--text-2);
-            font-size: 1.2rem;
-            padding: 6px 8px;
+            color: #a0aec0;
+            font-size: 1.3rem;
+            padding: 0;
+            width: 44px;
+            height: 44px;
             cursor: pointer;
             border-radius: var(--r-xs);
             line-height: 1;
             flex-shrink: 0;
         }
-        .cc-menu-btn:hover { background: var(--surface-2); color: var(--text); }
+        .cc-menu-btn:hover { background: var(--surface-2); color: #fff; }
 
         @media (max-width: 640px) {
             .cc-menu-btn { display: flex; align-items: center; justify-content: center; }
@@ -380,6 +405,7 @@
         <div class="cc-side-logo">
             <div class="cc-side-glyph"><div class="cc-side-glyph-dot"></div></div>
             <span class="cc-side-name">Hermes Agent</span>
+            <button class="cc-side-close" id="sideCloseBtn" aria-label="Close menu">&#10005;</button>
         </div>
 
         <div class="cc-side-nav">
@@ -387,7 +413,7 @@
             <div class="cc-side-item active">
                 <span class="cc-side-icon">&#128172;</span> Chat
             </div>
-            <a class="cc-side-item" href="/terminal" target="_blank" rel="noopener">
+            <a class="cc-side-item" href="/terminal">
                 <span class="cc-side-icon">&#62;_</span> Terminal
             </a>
             <a class="cc-side-item" href="/env-builder">
@@ -490,6 +516,9 @@
         ccSide.classList.contains('open') ? closeSidebar() : openSidebar();
     });
     ccOverlay.addEventListener('click', closeSidebar);
+
+    var sideCloseBtn = document.getElementById('sideCloseBtn');
+    if (sideCloseBtn) sideCloseBtn.addEventListener('click', closeSidebar);
 
     /* close sidebar when any nav link is tapped */
     var navLinks = ccSide.querySelectorAll('a.cc-side-item');
