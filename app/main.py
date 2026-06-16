@@ -70,6 +70,18 @@ app = FastAPI(title="Hermes Agent")
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
+_NO_CACHE = "no-cache, no-store, must-revalidate"
+
+
+@app.middleware("http")
+async def no_cache_html(request: Request, call_next):
+    response = await call_next(request)
+    ct = response.headers.get("content-type", "")
+    if "text/html" in ct:
+        response.headers["cache-control"] = _NO_CACHE
+        response.headers["pragma"] = "no-cache"
+    return response
+
 scheduler = AsyncIOScheduler()
 
 
