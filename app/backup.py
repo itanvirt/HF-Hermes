@@ -29,6 +29,13 @@ SYNC_INTERVAL_SECS = (
 # Files that must never leave the container.
 EXCLUDE_NAMES = {".env", "credentials.json", "secrets.json"}
 
+# Priority files saved as plain files in the dataset (not just in the tarball)
+# so they can be restored immediately on cold start without waiting for a tarball.
+PRIORITY_FILES = [
+    ("memories/USER.md",  "priority/USER.md"),
+    ("SOUL.md",           "priority/SOUL.md"),
+]
+
 
 def _write_state(data: dict) -> None:
     BACKUP_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +91,21 @@ def run_backup() -> dict:
             )
         finally:
             os.unlink(archive_path)
+
+        # Save priority files as plain files for fast cold-start restore
+        for local_rel, remote_rel in PRIORITY_FILES:
+            local = HERMES_HOME / local_rel
+            if local.exists() and local.stat().st_size > 0:
+                try:
+                    api.upload_file(
+                        path_or_fileobj=str(local),
+                        path_in_repo=remote_rel,
+                        repo_id=repo_id,
+                        repo_type="dataset",
+                        token=token,
+                    )
+                except Exception:
+                    pass  # non-fatal
 
         result = {
             "status": "success",

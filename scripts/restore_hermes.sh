@@ -28,16 +28,6 @@ except ImportError:
 token = os.environ.get("HF_TOKEN", "")
 hermes_home = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
 
-# Skip if there is already a database — avoids overwriting a mid-session restart
-existing_dbs = (
-    list(hermes_home.glob("**/*.db")) +
-    list(hermes_home.glob("**/*.sqlite")) +
-    list(hermes_home.glob("**/*.sqlite3"))
-)
-if existing_dbs:
-    print(f"~/.hermes already has state ({existing_dbs[0].name}) — skipping restore.")
-    sys.exit(0)
-
 api = HfApi(token=token)
 try:
     who = api.whoami(token=token)
@@ -50,40 +40,64 @@ repo_id = os.environ.get("BACKUP_DATASET_REPO", f"{who['name']}/{name}")
 
 try:
     all_files = list(api.list_repo_files(repo_id=repo_id, repo_type="dataset", token=token))
-    backups = sorted(f for f in all_files if f.startswith("backups/") and f.endswith(".tar.gz"))
 except Exception as e:
     print(f"Cannot list backup repo ({repo_id}): {e}")
     sys.exit(0)
 
+# --- Step 1: Restore priority plain files (SOUL.md, USER.md) immediately ---
+# These are saved as plain files on every backup cycle so they survive even
+# when the full tarball backup hasn't run yet since the last write.
+PRIORITY = [
+    ("priority/SOUL.md",  hermes_home / "SOUL.md"),
+    ("priority/USER.md",  hermes_home / "memories" / "USER.md"),
+]
+for remote, local in PRIORITY:
+    if remote in all_files:
+        try:
+            src = hf_hub_download(repo_id=repo_id, filename=remote,
+                                  repo_type="dataset", token=token)
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_bytes(Path(src).read_bytes())
+            print(f"Restored priority file: {local.name}")
+        except Exception as ex:
+            print(f"Could not restore {remote}: {ex}")
+
+# --- Step 2: Restore full state from latest tarball (if no DB yet) ----------
+existing_dbs = (
+    list(hermes_home.glob("**/*.db")) +
+    list(hermes_home.glob("**/*.sqlite")) +
+    list(hermes_home.glob("**/*.sqlite3"))
+)
+if existing_dbs:
+    print(f"~/.hermes already has state ({existing_dbs[0].name}) — skipping tarball restore.")
+    sys.exit(0)
+
+backups = sorted(f for f in all_files if f.startswith("backups/") and f.endswith(".tar.gz"))
 if not backups:
-    print("No backups found — fresh start.")
+    print("No tarball backups found — fresh start.")
     sys.exit(0)
 
 latest = backups[-1]
-print(f"Restoring from {latest} ...")
+print(f"Restoring full state from {latest} ...")
 
 SKIP_NAMES = {".env", "credentials.json", "secrets.json"}
 
 try:
     local_path = hf_hub_download(
-        repo_id=repo_id,
-        filename=latest,
-        repo_type="dataset",
-        token=token,
+        repo_id=repo_id, filename=latest,
+        repo_type="dataset", token=token,
     )
     hermes_home.mkdir(parents=True, exist_ok=True)
     hermes_root = hermes_home.resolve()
 
     with tarfile.open(local_path) as tar:
         for member in tar.getmembers():
-            # Archive was created with arcname="hermes-state"; strip that prefix
             parts = member.name.split("/", 1)
             if len(parts) < 2 or not parts[1]:
                 continue
             tail = parts[1]
             if Path(tail).name in SKIP_NAMES:
                 continue
-            # Path traversal guard
             dest = (hermes_home / tail).resolve()
             if not str(dest).startswith(str(hermes_root)):
                 continue
@@ -92,10 +106,10 @@ try:
             try:
                 tar.extract(member, path=str(hermes_home), filter="data")
             except TypeError:
-                tar.extract(member, path=str(hermes_home))  # Python < 3.12
+                tar.extract(member, path=str(hermes_home))
 
-    print(f"Restore complete.")
+    print("Full restore complete.")
 except Exception as e:
-    print(f"Restore failed: {e}")
+    print(f"Tarball restore failed: {e}")
     sys.exit(1)
 PYEOF
