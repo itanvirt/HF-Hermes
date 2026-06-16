@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Agent · Hermes</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<nav class="nav">
+    <div class="nav-brand">
+        <div class="nav-glyph"><div class="nav-glyph-dot"></div></div>
+        <span class="nav-name">Hermes Agent</span>
+        <div class="nav-sep"></div>
+        <span class="nav-tag" id="modelLabel">{{ model or 'not configured' }}</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="nav-actions">
+        <button class="btn sm ghost" id="clearBtn">Clear</button>
+        <a class="btn sm ghost" href="/terminal" target="_blank" rel="noopener">Terminal ↗</a>
+        <a class="btn sm ghost" href="/">&#8592; Dashboard</a>
+        <button class="btn sm ghost" id="lockBtn" title="Forget token and re-enter">&#128274;</button>
+    </div>
+</nav>
+
+<!-- AUTH GATE (shown when no token in localStorage) -->
+<div id="authGate" class="auth-wrap" style="display:none;">
+    <div class="auth-card">
+        <div class="auth-brand">
+            <div class="auth-glyph"><div class="auth-glyph-dot"></div></div>
+            <span class="auth-brand-name">Hermes Agent</span>
+        </div>
+        <div class="auth-h">Connect</div>
+        <div class="auth-sub">
+            Enter your <strong>GATEWAY_TOKEN</strong> to start chatting.
+            The token is stored locally in your browser.
+        </div>
+        {% if space_host %}
+        <div style="margin-bottom:14px;padding:10px 12px;background:var(--accent-dim);border:1px solid var(--accent-border);border-radius:var(--r-sm);font-size:0.8rem;color:var(--accent);">
+            Tip: open <a href="https://{{ space_host }}/agent" target="_blank" rel="noopener" style="font-weight:700;color:var(--accent);">{{ space_host }}/agent</a> directly for the best experience.
+        </div>
+        {% endif %}
+        <div class="auth-err" id="authErr" style="display:none;"></div>
+        <input class="auth-input" type="password" id="tokenInput" placeholder="GATEWAY_TOKEN" autofocus autocomplete="off">
+        <button class="btn primary" id="tokenSubmit" style="width:100%;justify-content:center;">Connect &#8594;</button>
+    </div>
+</div>
+
+<!-- CHAT UI -->
+<div id="chatRoot" class="chat-root" style="display:none;">
+    <div class="chat-messages" id="messages">
+        <div class="chat-empty" id="emptyState">
+            <div class="chat-empty-glyph"><div class="chat-empty-dot"></div></div>
+            <div class="chat-empty-title">Hermes Agent</div>
+            <div class="chat-empty-sub">Send a message to start a conversation with your AI assistant.</div>
+        </div>
+    </div>
+    <div class="chat-input-bar">
+        <textarea class="chat-input" id="chatInput" rows="1"
+            placeholder="Message Hermes Agent&hellip;  (Enter to send &middot; Shift+Enter for new line)"></textarea>
+        <button class="btn primary" id="sendBtn">Send</button>
+    </div>
+</div>
+
+<script>
+(function () {
+    var TOKEN_KEY = 'hermes_token';
+    var history = [];
+    var isStreaming = false;
+    var currentModel = {{ model | tojson }};
+
+    var authGate   = document.getElementById('authGate');
+    var chatRoot   = document.getElementById('chatRoot');
+    var tokenInput = document.getElementById('tokenInput');
+    var tokenSubmit= document.getElementById('tokenSubmit');
+    var authErr    = document.getElementById('authErr');
+    var messagesEl = document.getElementById('messages');
+    var chatInput  = document.getElementById('chatInput');
+    var sendBtn    = document.getElementById('sendBtn');
+    var clearBtn   = document.getElementById('clearBtn');
+    var lockBtn    = document.getElementById('lockBtn');
+    var emptyState = document.getElementById('emptyState');
+    var modelLabel = document.getElementById('modelLabel');
+
+    function getToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
+    function saveToken(t) { localStorage.setItem(TOKEN_KEY, t); }
+    function dropToken() { localStorage.removeItem(TOKEN_KEY); }
+
+    function showAuth() {
+        authGate.style.display = '';
+        chatRoot.style.display = 'none';
+        tokenInput.value = '';
+        setTimeout(function () { tokenInput.focus(); }, 50);
+    }
+
+    function showChat() {
+        authGate.style.display = 'none';
+        chatRoot.style.display = '';
+        setTimeout(function () { chatInput.focus(); }, 50);
+    }
+
+    function refreshModel() {
+        fetch('/api/status')
+            .then(function (r) { return r.json(); })
+            .then(function (s) {
+                var m = s.model && s.model.model;
+                if (m && m !== 'not configured') {
+                    currentModel = m;
+                    modelLabel.textContent = m;
+                }
+            })
+            .catch(function () {});
+    }
+
+    function addMsg(role, text, streaming) {
+        if (emptyState) emptyState.style.display = 'none';
+        var wrap = document.createElement('div');
+        wrap.className = 'chat-msg-wrap ' + role;
+        var lbl = document.createElement('div');
+        lbl.className = 'chat-msg-lbl';
+        lbl.textContent = role === 'user' ? 'You' : 'Assistant';
+        var bubble = document.createElement('div');
+        bubble.className = 'chat-msg ' + role + (streaming ? ' streaming' : '');
+        bubble.textContent = text;
+        wrap.appendChild(lbl);
+        wrap.appendChild(bubble);
+        messagesEl.appendChild(wrap);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        return bubble;
+    }
+
+    function appendChunk(bubble, chunk) {
+        bubble.textContent += chunk;
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function finalise(bubble) {
+        bubble.classList.remove('streaming');
+    }
+
+    function sendMessage(text) {
+        text = text.trim();
+        if (!text || isStreaming) return;
+        var token = getToken();
+        if (!token) { showAuth(); return; }
+
+        history.push({ role: 'user', content: text });
+        addMsg('user', text, false);
+        chatInput.value = '';
+        chatInput.style.height = '';
+
+        isStreaming = true;
+        sendBtn.disabled = true;
+        sendBtn.textContent = '…';
+
+        var bubble = addMsg('assistant', '', true);
+        var assistantText = '';
+
+        var payload = JSON.stringify({
+            model: currentModel || undefined,
+            messages: history,
+            stream: true
+        });
+
+        fetch('/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: payload
+        }).then(function (res) {
+            if (res.status === 401) {
+                bubble.textContent = '[Unauthorized — check your GATEWAY_TOKEN]';
+                finalise(bubble);
+                done();
+                return;
+            }
+            if (!res.ok || !res.body) {
+                return res.text().then(function (t) {
+                    bubble.textContent = '[Error ' + res.status + (t ? ': ' + t.slice(0, 200) : '') + ']';
+                    finalise(bubble);
+                    done();
+                });
+            }
+
+            var reader = res.body.getReader();
+            var decoder = new TextDecoder();
+            var buf = '';
+
+            function read() {
+                reader.read().then(function (result) {
+                    if (result.done) {
+                        if (!assistantText) {
+                            bubble.textContent = '[No response received]';
+                        }
+                        history.push({ role: 'assistant', content: assistantText });
+                        finalise(bubble);
+                        done();
+                        return;
+                    }
+                    buf += decoder.decode(result.value, { stream: true });
+                    var lines = buf.split('\n');
+                    buf = lines.pop();
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i].trim();
+                        if (!line.startsWith('data:')) continue;
+                        var data = line.slice(5).trim();
+                        if (data === '[DONE]') continue;
+                        try {
+                            var obj = JSON.parse(data);
+                            if (obj.error) {
+                                bubble.textContent = '[API error: ' + (obj.error.message || JSON.stringify(obj.error)) + ']';
+                                continue;
+                            }
+                            var delta = obj.choices && obj.choices[0] && obj.choices[0].delta;
+                            if (delta && delta.content) {
+                                assistantText += delta.content;
+                                appendChunk(bubble, delta.content);
+                            }
+                        } catch (e) {}
+                    }
+                    read();
+                }).catch(function () {
+                    finalise(bubble);
+                    done();
+                });
+            }
+            read();
+        }).catch(function (e) {
+            bubble.textContent = '[Network error]';
+            finalise(bubble);
+            done();
+        });
+
+        function done() {
+            isStreaming = false;
+            sendBtn.disabled = false;
+            sendBtn.textContent = 'Send';
+            chatInput.focus();
+        }
+    }
+
+    // Token gate
+    tokenSubmit.addEventListener('click', function () {
+        var t = tokenInput.value.trim();
+        if (!t) return;
+        saveToken(t);
+        authErr.style.display = 'none';
+        showChat();
+    });
+    tokenInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') tokenSubmit.click();
+    });
+
+    // Send
+    sendBtn.addEventListener('click', function () { sendMessage(chatInput.value); });
+    chatInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(chatInput.value); }
+    });
+
+    // Auto-resize
+    chatInput.addEventListener('input', function () {
+        this.style.height = '';
+        this.style.height = Math.min(this.scrollHeight, 180) + 'px';
+    });
+
+    // Clear conversation
+    clearBtn.addEventListener('click', function () {
+        history = [];
+        messagesEl.innerHTML = '';
+        if (emptyState) { emptyState.style.display = ''; messagesEl.appendChild(emptyState); }
+    });
+
+    // Forget token
+    lockBtn.addEventListener('click', function () {
+        if (confirm('Forget saved token?')) { dropToken(); showAuth(); }
+    });
+
+    // Boot
+    refreshModel();
+    if (getToken()) { showChat(); } else { showAuth(); }
+}());
+</script>
+</body>
+</html>

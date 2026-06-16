@@ -17,6 +17,13 @@
             <div class="auth-h">Authenticate</div>
             <div class="auth-sub">Enter your GATEWAY_TOKEN to access the dashboard.</div>
 
+            {% if space_host %}
+            <div style="margin-bottom:16px;padding:10px 14px;background:var(--amber-dim);border:1px solid var(--amber-border);border-radius:var(--r-sm);font-size:0.82rem;color:var(--amber);line-height:1.55;">
+                If login doesn't stick, open the Space in its own tab first &mdash; embedded iframes block session cookies in most browsers.<br>
+                <a href="https://{{ space_host }}/login?next={{ next }}" target="_blank" rel="noopener" style="font-weight:700;color:var(--amber);">Open in new tab &rarr;</a>
+            </div>
+            {% endif %}
+
             {% if not configured %}
             <div class="auth-err">
                 GATEWAY_TOKEN is not set. Add it under Settings &rarr; Variables and secrets, then restart the Space.

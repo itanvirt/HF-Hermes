@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -5,7 +6,7 @@ from pathlib import Path
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, Form, Request, WebSocket
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -16,6 +17,7 @@ GATEWAY_PORT = int(os.environ.get("GATEWAY_PORT", "8642"))
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
 HERMES_ENV_FILE = HERMES_HOME / ".env"
 TELEGRAM_WEBHOOK_PATH = os.environ.get("HERMES_TELEGRAM_WEBHOOK_PATH", "/telegram-webhook")
+SPACE_HOST = os.environ.get("SPACE_HOST", "")
 
 
 def _read_hermes_env_var(name: str) -> str:
@@ -113,7 +115,13 @@ async def api_status():
 async def login_form(request: Request, next: str = "/"):
     return templates.TemplateResponse(
         "login.html",
-        {"request": request, "next": next, "configured": auth.gateway_token_configured(), "error": None},
+        {
+            "request": request,
+            "next": next,
+            "configured": auth.gateway_token_configured(),
+            "error": None,
+            "space_host": SPACE_HOST,
+        },
     )
 
 
@@ -122,7 +130,13 @@ async def login(request: Request, token: str = Form(...), next: str = Form("/"))
     if not auth.verify_token(token):
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "next": next, "configured": auth.gateway_token_configured(), "error": "Invalid token"},
+            {
+                "request": request,
+                "next": next,
+                "configured": auth.gateway_token_configured(),
+                "error": "Invalid token",
+                "space_host": SPACE_HOST,
+            },
             status_code=401,
         )
     response = RedirectResponse(url=next, status_code=302)
@@ -131,7 +145,7 @@ async def login(request: Request, token: str = Form(...), next: str = Form("/"))
         auth.issue_session_cookie(),
         max_age=auth.SESSION_MAX_AGE,
         httponly=True,
-        samesite="lax",
+        samesite="none",
         secure=True,
     )
     return response
@@ -151,7 +165,23 @@ def _require_session(request: Request) -> RedirectResponse | None:
 
 
 # --------------------------------------------------------------------------
-# Terminal / Hermes Agent TUI
+# Agent chat UI (public — auth via Bearer token stored in localStorage)
+# --------------------------------------------------------------------------
+@app.get("/agent", response_class=HTMLResponse)
+async def agent_page(request: Request):
+    data = await status.full_status()
+    return templates.TemplateResponse(
+        "chat.html",
+        {
+            "request": request,
+            "model": data["model"]["model"],
+            "space_host": SPACE_HOST,
+        },
+    )
+
+
+# --------------------------------------------------------------------------
+# Terminal (session cookie required)
 # --------------------------------------------------------------------------
 @app.get("/terminal", response_class=HTMLResponse)
 async def terminal_page(request: Request):
@@ -160,16 +190,6 @@ async def terminal_page(request: Request):
         return redirect
     return templates.TemplateResponse(
         "terminal.html", {"request": request, "ws_path": "/ws/terminal", "page_title": "Terminal"}
-    )
-
-
-@app.get("/agent", response_class=HTMLResponse)
-async def agent_page(request: Request):
-    redirect = _require_session(request)
-    if redirect:
-        return redirect
-    return templates.TemplateResponse(
-        "terminal.html", {"request": request, "ws_path": "/ws/agent", "page_title": "Hermes Agent"}
     )
 
 
@@ -268,9 +288,8 @@ async def env_builder_restart(request: Request):
 # OpenAI-compatible LLM relay (Bearer GATEWAY_TOKEN required)
 #
 # Forwards /v1/* to the configured LLM provider's API, substituting your
-# real API key. Lets any OpenAI-compatible client use this Space as a
-# remote AI backend (e.g. point VS Code extension or LLM tools at
-# https://<space>.hf.space/v1) without exposing the key directly.
+# real API key. Supports streaming (text/event-stream) when the request
+# body contains "stream": true.
 # --------------------------------------------------------------------------
 @app.api_route("/v1/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def v1_relay(path: str, request: Request):
@@ -285,6 +304,33 @@ async def v1_relay(path: str, request: Request):
     }
     if api_key:
         forward_headers["authorization"] = f"Bearer {api_key}"
+
+    # Detect streaming request
+    streaming = False
+    if body:
+        try:
+            streaming = bool(json.loads(body).get("stream", False))
+        except Exception:
+            pass
+
+    if streaming:
+        async def _stream():
+            try:
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    async with client.stream(
+                        request.method,
+                        upstream_url,
+                        params=dict(request.query_params),
+                        content=body,
+                        headers=forward_headers,
+                    ) as upstream:
+                        async for chunk in upstream.aiter_bytes():
+                            yield chunk
+            except httpx.ConnectError:
+                yield b"data: {\"error\":{\"message\":\"upstream LLM API unavailable\"}}\n\ndata: [DONE]\n\n"
+
+        return StreamingResponse(_stream(), media_type="text/event-stream")
+
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             upstream = await client.request(
@@ -305,11 +351,6 @@ async def v1_relay(path: str, request: Request):
 
 # --------------------------------------------------------------------------
 # Gateway reverse proxy (Bearer GATEWAY_TOKEN required)
-#
-# By default `hermes gateway run` talks to Telegram via long-polling and
-# opens no port, so these routes have nothing to proxy to. They become
-# useful in webhook mode (TELEGRAM_MODE=webhook, see configure_hermes.sh),
-# where hermes listens on GATEWAY_PORT for Telegram updates.
 # --------------------------------------------------------------------------
 @app.api_route("/gateway/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def gateway_proxy(path: str, request: Request):
@@ -320,10 +361,6 @@ async def gateway_proxy(path: str, request: Request):
 
 # --------------------------------------------------------------------------
 # Telegram webhook (TELEGRAM_MODE=webhook)
-#
-# Telegram itself authenticates with the X-Telegram-Bot-Api-Secret-Token
-# header (TELEGRAM_WEBHOOK_SECRET). The Bearer GATEWAY_TOKEN path is for the
-# optional Cloudflare Worker proxy, which can't forward Telegram's header.
 # --------------------------------------------------------------------------
 @app.post("/telegram-webhook")
 async def telegram_webhook(request: Request):
