@@ -7,7 +7,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: mit
-short_description: Free, self-hosted AI agent with a Telegram bot, dashboard, and auto backups — no coding required.
+short_description: Free, self-hosted AI agent with a Telegram bot — no code.
 tags:
   - agent
   - ai-agent
