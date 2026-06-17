@@ -1,16 +1,23 @@
-"""Periodically archives Hermes Agent state and uploads it to a private
-Hugging Face dataset repo (<your-username>/hermes-backup).
+"""Mirrors Hermes Agent state into a private Hugging Face dataset repo
+(<your-username>/hermes-backup) — one file per file, no tarball.
+
+Ported from HuggingMes's hermes-sync.py: `upload_folder`/`snapshot_download`
+let huggingface_hub diff against the repo and only transfer files that
+actually changed, so the dataset's working tree stays bounded to the size of
+~/.hermes itself instead of accumulating a brand-new full archive every
+cycle (which is what grew our previous tarball-based backup to 83.9GB).
 """
+import hashlib
 import json
 import logging
 import os
 import shutil
-import tarfile
+import socket
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from huggingface_hub import HfApi
+from huggingface_hub import HfApi, upload_folder
 
 from app.status import BACKUP_STATE_FILE
 
@@ -40,23 +47,14 @@ EXCLUDE_FILE_SUFFIXES = (".db-shm", ".db-wal", ".db-journal")
 # cache/model file can't dominate every backup.
 SYNC_MAX_FILE_BYTES = int(os.environ.get("SYNC_MAX_FILE_BYTES", str(50 * 1024 * 1024)))
 
-# How many tarball backups to keep; older ones are deleted (and history
-# squashed) so the dataset doesn't grow unbounded across restarts.
-RETENTION_COUNT = int(os.environ.get("BACKUP_RETENTION_COUNT", "5"))
-
-# Tracks (file_count, total_size, newest_mtime) of HERMES_HOME between runs
-# so a full tarball is only built and uploaded when something actually
-# changed, instead of re-uploading an identical snapshot every cycle.
+# Cheap (file_count, total_size, newest_mtime) marker is checked first on
+# every cycle; only when it changes do we pay for a full SHA-256 content
+# hash, and only when *that* also differs do we actually snapshot + upload.
+# Catches "marker changed but content didn't" (e.g. a touch) without paying
+# for an upload. Mirrors HuggingMes's metadata_marker()/fingerprint_dir().
 FINGERPRINT_FILE = Path(
     os.environ.get("BACKUP_FINGERPRINT_FILE", str(BACKUP_STATE_FILE.parent / "backup_fingerprint.json"))
 )
-
-# Priority files saved as plain files in the dataset (not just in the tarball)
-# so they can be restored immediately on cold start without waiting for a tarball.
-PRIORITY_FILES = [
-    ("memories/USER.md",  "priority/USER.md"),
-    ("SOUL.md",           "priority/SOUL.md"),
-]
 
 # Other places the agent has been observed writing SOUL.md instead of the
 # canonical HERMES_HOME/SOUL.md path.
@@ -65,6 +63,8 @@ SOUL_FALLBACK_PATHS = [
     Path.home() / "SOUL.md",
     Path.home() / ".hermes" / "workspace" / "SOUL.md",
 ]
+
+_REPO_ID_CACHE: str | None = None
 
 
 def _write_state(data: dict) -> None:
@@ -81,27 +81,32 @@ def _read_state() -> dict:
     return {}
 
 
-def _read_fingerprint() -> dict | None:
+def _read_fingerprint() -> dict:
     if FINGERPRINT_FILE.exists():
         try:
             return json.loads(FINGERPRINT_FILE.read_text())
         except Exception:
-            return None
-    return None
+            pass
+    return {}
 
 
-def _write_fingerprint(marker: dict) -> None:
+def _write_fingerprint(data: dict) -> None:
     FINGERPRINT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    FINGERPRINT_FILE.write_text(json.dumps(marker))
+    FINGERPRINT_FILE.write_text(json.dumps(data))
 
 
 def _dataset_repo_id(api: HfApi, token: str) -> str:
+    global _REPO_ID_CACHE
+    if _REPO_ID_CACHE:
+        return _REPO_ID_CACHE
     custom = os.environ.get("BACKUP_DATASET_REPO")
     if custom:
+        _REPO_ID_CACHE = custom
         return custom
     who = api.whoami(token=token)
     name = os.environ.get("BACKUP_DATASET_NAME", "hermes-backup")
-    return f"{who['name']}/{name}"
+    _REPO_ID_CACHE = f"{who['name']}/{name}"
+    return _REPO_ID_CACHE
 
 
 def _is_excluded(parts: tuple) -> bool:
@@ -117,114 +122,96 @@ def _is_excluded(parts: tuple) -> bool:
     return False
 
 
-def _tar_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
-    parts = Path(tarinfo.name).parts[1:]  # strip the "hermes-state" arcname prefix
-    if _is_excluded(parts):
-        return None
-    # Exclude the directory itself (not just its contents) so tarfile
-    # doesn't recurse into large trees like node_modules/.venv at all.
-    if tarinfo.isdir() and parts and parts[-1] in EXCLUDE_DIR_NAMES:
-        return None
-    if tarinfo.isfile() and tarinfo.size > SYNC_MAX_FILE_BYTES:
-        return None
-    return tarinfo
+def _should_exclude(rel: Path, full_path: Path) -> bool:
+    if _is_excluded(rel.parts):
+        return True
+    if full_path.is_file():
+        try:
+            return full_path.stat().st_size > SYNC_MAX_FILE_BYTES
+        except OSError:
+            return True
+    return False
 
 
-def _fingerprint(root: Path) -> dict:
-    """Cheap metadata fingerprint (no content hashing): catches additions,
-    deletions, and edits without having to read every file's bytes."""
+def _promote_soul_md() -> None:
+    """Agent writes SOUL.md to unpredictable locations; promote the first
+    non-empty copy found to the canonical path before syncing."""
+    local = HERMES_HOME / "SOUL.md"
+    if local.exists() and local.stat().st_size > 0:
+        return
+    for candidate in SOUL_FALLBACK_PATHS:
+        if candidate.exists() and candidate.stat().st_size > 0:
+            local.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(candidate, local)
+            logger.info("Promoted %s → SOUL.md for backup", candidate)
+            return
+
+
+def _metadata_marker(root: Path) -> dict:
     file_count = 0
     total_size = 0
     newest_mtime = 0.0
-    for p in root.rglob("*"):
-        if not p.is_file():
-            continue
-        try:
-            rel_parts = p.relative_to(root).parts
-        except ValueError:
-            continue
-        if _is_excluded(rel_parts):
-            continue
-        try:
-            st = p.stat()
-        except OSError:
-            continue
-        if st.st_size > SYNC_MAX_FILE_BYTES:
-            continue
-        file_count += 1
-        total_size += st.st_size
-        newest_mtime = max(newest_mtime, st.st_mtime)
-    # Also fold in the SOUL.md fallback paths (outside HERMES_HOME) so a
-    # write there still triggers the priority-file promotion check below.
-    for fallback in SOUL_FALLBACK_PATHS:
-        try:
-            st = fallback.stat()
-        except OSError:
-            continue
-        file_count += 1
-        total_size += st.st_size
-        newest_mtime = max(newest_mtime, st.st_mtime)
+    if root.exists():
+        for p in root.rglob("*"):
+            if not p.is_file():
+                continue
+            try:
+                rel = p.relative_to(root)
+            except ValueError:
+                continue
+            if _should_exclude(rel, p):
+                continue
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            file_count += 1
+            total_size += st.st_size
+            newest_mtime = max(newest_mtime, st.st_mtime)
     return {"file_count": file_count, "total_size": total_size, "newest_mtime": newest_mtime}
 
 
-def _sync_priority_files(api: HfApi, repo_id: str, token: str) -> None:
-    for local_rel, remote_rel in PRIORITY_FILES:
-        local = HERMES_HOME / local_rel
-        # Agent writes SOUL.md to unpredictable locations; check all known
-        # wrong paths and promote to the correct one before uploading.
-        if local_rel == "SOUL.md" and (not local.exists() or local.stat().st_size == 0):
-            for candidate in SOUL_FALLBACK_PATHS:
-                if candidate.exists() and candidate.stat().st_size > 0:
-                    local.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(candidate, local)
-                    logger.info("Promoted %s → SOUL.md for backup", candidate)
-                    break
-        if local.exists() and local.stat().st_size > 0:
-            try:
-                api.upload_file(
-                    path_or_fileobj=str(local),
-                    path_in_repo=remote_rel,
-                    repo_id=repo_id,
-                    repo_type="dataset",
-                    token=token,
-                )
-            except Exception:
-                pass  # non-fatal
+def _content_fingerprint(root: Path) -> str:
+    """Full SHA-256 over relative paths + file contents. Only computed when
+    the cheap marker indicates something may have changed."""
+    hasher = hashlib.sha256()
+    if not root.exists():
+        return hasher.hexdigest()
+    for p in sorted(p for p in root.rglob("*") if p.is_file()):
+        try:
+            rel = p.relative_to(root)
+        except ValueError:
+            continue
+        if _should_exclude(rel, p):
+            continue
+        hasher.update(rel.as_posix().encode("utf-8"))
+        try:
+            with p.open("rb") as fh:
+                for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                    hasher.update(chunk)
+        except OSError:
+            continue
+    return hasher.hexdigest()
 
 
-def _prune_old_backups(api: HfApi, repo_id: str, token: str) -> dict:
-    try:
-        all_files = list(api.list_repo_files(repo_id=repo_id, repo_type="dataset", token=token))
-    except Exception:
-        logger.warning("could not list repo files for pruning", exc_info=True)
-        return {"pruned": 0, "error": "list failed"}
-    backups = sorted(f for f in all_files if f.startswith("backups/") and f.endswith(".tar.gz"))
-    stale = backups[:-RETENTION_COUNT] if len(backups) > RETENTION_COUNT else []
-    if not stale:
-        return {"pruned": 0}
-    # Delete all stale files in a single commit -- doing this one file at a
-    # time (one commit per file) is far too slow / rate-limit-prone once
-    # hundreds or thousands of backups have accumulated.
-    try:
-        api.delete_files(
-            repo_id=repo_id,
-            repo_type="dataset",
-            delete_patterns=stale,
-            token=token,
-            commit_message=f"Prune {len(stale)} old backup(s)",
-        )
-    except Exception:
-        logger.warning("could not delete stale backups", exc_info=True)
-        return {"pruned": 0, "error": "delete failed"}
-    # Deleting files only removes them from the latest commit tree -- the old
-    # blobs stay in git history (and count toward dataset storage) until the
-    # history is squashed.
-    try:
-        api.super_squash_history(repo_id=repo_id, repo_type="dataset", token=token)
-    except Exception:
-        logger.warning("history squash failed", exc_info=True)
-        return {"pruned": len(stale), "error": "squash failed"}
-    return {"pruned": len(stale)}
+def _create_snapshot_dir(source_root: Path) -> Path:
+    """Copy the (filtered) tree into a temp staging dir so the upload sees a
+    consistent snapshot instead of a tree the agent might mutate mid-upload."""
+    staging = Path(tempfile.mkdtemp(prefix="hermes-sync-"))
+    for p in sorted(source_root.rglob("*")):
+        rel = p.relative_to(source_root)
+        if _should_exclude(rel, p):
+            continue
+        target = staging / rel
+        if p.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(p, target)
+        except OSError:
+            continue  # file removed mid-snapshot by the agent
+    return staging
 
 
 def run_backup() -> dict:
@@ -244,13 +231,11 @@ def run_backup() -> dict:
         repo_id = _dataset_repo_id(api, token)
         api.create_repo(repo_id=repo_id, repo_type="dataset", private=True, exist_ok=True, token=token)
 
-        # Priority files are tiny, so save them every cycle regardless of
-        # whether the full tree changed -- SOUL.md/USER.md should survive
-        # even between full snapshots.
-        _sync_priority_files(api, repo_id, token)
+        _promote_soul_md()
 
-        marker = _fingerprint(HERMES_HOME)
-        if marker == _read_fingerprint():
+        prev = _read_fingerprint()
+        marker = _metadata_marker(HERMES_HOME)
+        if marker == prev.get("marker"):
             result = _read_state()
             result["status"] = "no changes"
             result["repo"] = repo_id
@@ -258,36 +243,43 @@ def run_backup() -> dict:
             _write_state(result)
             return result
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
-            archive_path = tmp.name
-        try:
-            with tarfile.open(archive_path, "w:gz") as tar:
-                tar.add(HERMES_HOME, arcname="hermes-state", filter=_tar_filter)
+        content_hash = _content_fingerprint(HERMES_HOME)
+        if content_hash == prev.get("hash"):
+            # Marker drifted (e.g. a touch) but content is identical --
+            # confirmed via full hash, so skip the upload.
+            _write_fingerprint({"marker": marker, "hash": content_hash})
+            result = _read_state()
+            result["status"] = "no changes"
+            result["repo"] = repo_id
+            result["checked_at"] = datetime.now(timezone.utc).strftime("%H:%M:%S")
+            _write_state(result)
+            return result
 
-            remote_path = f"backups/hermes-state-{timestamp}.tar.gz"
-            api.upload_file(
-                path_or_fileobj=archive_path,
-                path_in_repo=remote_path,
+        hostname = socket.gethostname()
+        snapshot_dir = _create_snapshot_dir(HERMES_HOME)
+        try:
+            upload_folder(
+                folder_path=str(snapshot_dir),
                 repo_id=repo_id,
                 repo_type="dataset",
                 token=token,
+                commit_message=f"Hermes sync [{hostname}] {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                # Mirror the live tree exactly: anything no longer present
+                # locally (deleted files, or legacy backups/priority dirs
+                # from the old tarball scheme) is removed from the repo too,
+                # instead of accumulating forever.
+                delete_patterns=["*"],
             )
         finally:
-            os.unlink(archive_path)
+            shutil.rmtree(snapshot_dir, ignore_errors=True)
 
-        prune_result = _prune_old_backups(api, repo_id, token)
-        _write_fingerprint(marker)
+        _write_fingerprint({"marker": marker, "hash": content_hash})
 
         result = {
             "status": "success",
             "repo": repo_id,
-            "path": remote_path,
             "at": datetime.now(timezone.utc).strftime("%H:%M:%S"),
-            "pruned": prune_result.get("pruned", 0),
         }
-        if prune_result.get("error"):
-            result["prune_error"] = prune_result["error"]
     except Exception as exc:  # noqa: BLE001 - surface any failure on the dashboard
         logger.exception("backup failed")
         result = {"status": f"error: {exc}", "repo": None, "at": None}

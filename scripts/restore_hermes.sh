@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Restores ~/.hermes from the most recent HF Dataset backup on cold start.
-# Safe to run on every boot: no-ops if state already exists.
+# Restores ~/.hermes from the HF Dataset backup on every boot.
+# The container is ephemeral (HF Spaces rebuilds wipe local state), so the
+# dataset is the durable source of truth and always wins over whatever (if
+# anything) happens to exist locally already.
 set -uo pipefail
 
 LOG="/home/user/app/data/hermes-restore.log"
@@ -16,11 +18,12 @@ if [ -z "$HF_TOKEN" ]; then
 fi
 
 python3 - <<'PYEOF' 2>&1 | tee -a "$LOG"
-import os, sys, tarfile
+import os, shutil, sys, tempfile
 from pathlib import Path
 
 try:
-    from huggingface_hub import HfApi, hf_hub_download
+    from huggingface_hub import HfApi, snapshot_download
+    from huggingface_hub.errors import HfHubHTTPError, RepositoryNotFoundError
 except ImportError:
     print("huggingface_hub not available — skipping restore")
     sys.exit(0)
@@ -38,88 +41,53 @@ except Exception as e:
 name = os.environ.get("BACKUP_DATASET_NAME", "hermes-backup")
 repo_id = os.environ.get("BACKUP_DATASET_REPO", f"{who['name']}/{name}")
 
-try:
-    all_files = list(api.list_repo_files(repo_id=repo_id, repo_type="dataset", token=token))
-except Exception as e:
-    print(f"Cannot list backup repo ({repo_id}): {e}")
-    sys.exit(0)
-
-# --- Step 1: Restore priority plain files (SOUL.md, USER.md) immediately ---
-# These are saved as plain files on every backup cycle so they survive even
-# when the full tarball backup hasn't run yet since the last write.
-PRIORITY = [
-    ("priority/SOUL.md",  hermes_home / "SOUL.md"),
-    ("priority/USER.md",  hermes_home / "memories" / "USER.md"),
-]
-for remote, local in PRIORITY:
-    if remote in all_files:
-        try:
-            src = hf_hub_download(repo_id=repo_id, filename=remote,
-                                  repo_type="dataset", token=token)
-            local.parent.mkdir(parents=True, exist_ok=True)
-            local.write_bytes(Path(src).read_bytes())
-            print(f"Restored priority file: {local.name}")
-            # Mirror SOUL.md to all paths the agent might write to,
-            # so it finds the persona wherever it looks next time.
-            if local.name == "SOUL.md":
-                data = local.read_bytes()
-                for mirror in [
-                    hermes_home / "workspace" / "SOUL.md",
-                    Path.home() / "SOUL.md",
-                ]:
-                    mirror.parent.mkdir(parents=True, exist_ok=True)
-                    mirror.write_bytes(data)
-        except Exception as ex:
-            print(f"Could not restore {remote}: {ex}")
-
-# --- Step 2: Restore full state from latest tarball (if no DB yet) ----------
-existing_dbs = (
-    list(hermes_home.glob("**/*.db")) +
-    list(hermes_home.glob("**/*.sqlite")) +
-    list(hermes_home.glob("**/*.sqlite3"))
-)
-if existing_dbs:
-    print(f"~/.hermes already has state ({existing_dbs[0].name}) — skipping tarball restore.")
-    sys.exit(0)
-
-backups = sorted(f for f in all_files if f.startswith("backups/") and f.endswith(".tar.gz"))
-if not backups:
-    print("No tarball backups found — fresh start.")
-    sys.exit(0)
-
-latest = backups[-1]
-print(f"Restoring full state from {latest} ...")
-
-SKIP_NAMES = {".env", "credentials.json", "secrets.json"}
+# Files that never leave the container, plus artifacts from the previous
+# tarball-based backup scheme (a dataset that predates this change may still
+# have a top-level "backups/" or "priority/" dir from that era).
+SKIP_NAMES = {".env", "credentials.json", "secrets.json", ".gitattributes", "backups", "priority"}
 
 try:
-    local_path = hf_hub_download(
-        repo_id=repo_id, filename=latest,
-        repo_type="dataset", token=token,
-    )
-    hermes_home.mkdir(parents=True, exist_ok=True)
-    hermes_root = hermes_home.resolve()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        snapshot_download(
+            repo_id=repo_id, repo_type="dataset", token=token,
+            local_dir=tmpdir, local_dir_use_symlinks=False,
+        )
+        tmp_path = Path(tmpdir)
+        if not any(tmp_path.iterdir()):
+            print("Backup dataset is empty — fresh start.")
+            sys.exit(0)
 
-    with tarfile.open(local_path) as tar:
-        for member in tar.getmembers():
-            parts = member.name.split("/", 1)
-            if len(parts) < 2 or not parts[1]:
+        hermes_home.mkdir(parents=True, exist_ok=True)
+        for child in tmp_path.iterdir():
+            if child.name in SKIP_NAMES:
                 continue
-            tail = parts[1]
-            if Path(tail).name in SKIP_NAMES:
-                continue
-            dest = (hermes_home / tail).resolve()
-            if not str(dest).startswith(str(hermes_root)):
-                continue
-            member.name = tail
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                tar.extract(member, path=str(hermes_home), filter="data")
-            except TypeError:
-                tar.extract(member, path=str(hermes_home))
+            target = hermes_home / child.name
+            if target.is_dir():
+                shutil.rmtree(target, ignore_errors=True)
+            elif target.exists():
+                target.unlink()
+            if child.is_dir():
+                shutil.copytree(child, target)
+            else:
+                shutil.copy2(child, target)
 
-    print("Full restore complete.")
+    # Mirror SOUL.md to the paths the agent commonly writes to / looks for,
+    # so it finds the persona regardless of where it searches next time.
+    soul = hermes_home / "SOUL.md"
+    if soul.exists() and soul.stat().st_size > 0:
+        data = soul.read_bytes()
+        for mirror in [hermes_home / "workspace" / "SOUL.md", Path.home() / "SOUL.md"]:
+            mirror.parent.mkdir(parents=True, exist_ok=True)
+            mirror.write_bytes(data)
+
+    print(f"Restored Hermes state from {repo_id}.")
+except RepositoryNotFoundError:
+    print(f"Backup dataset {repo_id} does not exist yet — fresh start.")
+except HfHubHTTPError as e:
+    if e.response is not None and e.response.status_code == 404:
+        print(f"Backup dataset {repo_id} does not exist yet — fresh start.")
+    else:
+        print(f"Restore failed: {e}")
 except Exception as e:
-    print(f"Tarball restore failed: {e}")
-    sys.exit(1)
+    print(f"Restore failed: {e}")
 PYEOF

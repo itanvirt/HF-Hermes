@@ -4,6 +4,7 @@ A single shared secret (GATEWAY_TOKEN) acts as the password. Successful
 login sets a signed cookie so the browser doesn't need to resend the token
 on every request.
 """
+import hmac
 import os
 
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -38,7 +39,7 @@ def verify_session_cookie(value: str | None) -> bool:
 
 
 def verify_token(token: str) -> bool:
-    return gateway_token_configured() and token == GATEWAY_TOKEN
+    return gateway_token_configured() and hmac.compare_digest(token, GATEWAY_TOKEN)
 
 
 def verify_bearer(header_value: str | None) -> bool:

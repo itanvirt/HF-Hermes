@@ -12,7 +12,6 @@ variables:
   CLOUDFLARE_ACCOUNT_ID: ""
   SYNC_INTERVAL: "600"
   BACKUP_DATASET_NAME: "hermes-backup"
-  BACKUP_RETENTION_COUNT: "5"
   GATEWAY_RESTART_DELAY: "5"
   GATEWAY_MAX_RESTARTS: "0"
   GATEWAY_PORT: "8642"
@@ -32,7 +31,9 @@ on the free CPU tier, with:
 - **ENV Builder** — view/edit runtime configuration without redeploying
 - a Telegram bot via the Hermes messaging gateway (long-polling, no inbound
   webhook required)
-- automatic backups of agent state to a private Hugging Face dataset
+- automatic backups of agent state to a private Hugging Face dataset —
+  mirrored file-by-file (no tarballs), so the dataset's storage stays
+  bounded to the size of `~/.hermes` instead of growing with every sync
 - automatic keep-awake + Telegram proxy: on first boot, the container
   deploys a tiny Cloudflare Worker (using your `CLOUDFLARE_WORKERS_TOKEN`
   secret) that pings `/health` every 10 minutes so the free Space doesn't
@@ -99,9 +100,9 @@ comma-separated list — the first key is promoted to the active singular var au
 | `STARTUP_PIP_PACKAGES` | — | Space-separated pip packages to install on every boot. |
 | `STARTUP_NPM_PACKAGES` | — | Space-separated npm packages to install on every boot. |
 | `STARTUP_RUN` | — | Bash commands to run on every boot (use `STARTUP_RUN_BASE64` for multi-line). |
-| `SYNC_INTERVAL` | `600` | Backup check frequency in seconds. A tarball is only built and uploaded when something actually changed since the last check. |
+| `STARTUP_CAPTURE_DISABLE` | — | Set to `1` to disable the Terminal's auto-capture wrappers (apt/pip/npm/hermes installs are normally auto-appended to `data/startup.sh` for replay on next boot). |
+| `SYNC_INTERVAL` | `600` | Backup check frequency in seconds. Files are only uploaded when something actually changed since the last check (cheap metadata check first, full content hash to confirm). |
 | `BACKUP_DATASET_NAME` | `hermes-backup` | Dataset name for backups (owner is auto-detected from `HF_TOKEN`). |
-| `BACKUP_RETENTION_COUNT` | `5` | Number of tarball backups to keep; older ones are deleted (and dataset history squashed) so storage doesn't grow unbounded. |
 | `SYNC_MAX_FILE_BYTES` | `52428800` (50MB) | Skip any single file larger than this when backing up, so one oversized cache/log file can't bloat every backup. |
 | `CLOUDFLARE_ACCOUNT_ID` | — | Your Cloudflare account ID (Cloudflare dashboard → Workers & Pages → right sidebar). Required for the keep-awake Worker to deploy. The container will try to auto-detect it from your token, but setting it explicitly is more reliable. |
 | `CLOUDFLARE_KEEPALIVE_ENABLED` | `true` | Set to `false` to deploy the Worker (for Telegram proxy) without the keep-awake cron. |
