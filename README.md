@@ -31,7 +31,7 @@ variables:
 
 # Hermes Agent: run a free, self-hosted AI agent + Telegram bot on Hugging Face Spaces
 
-![Hermes Agent — free, self-hosted AI agent with a Telegram bot, running on a Hugging Face Space](./assets/banner.svg)
+![Hermes Agent — free, self-hosted AI agent with a Telegram bot, running on a Hugging Face Space](./assets/banner.jpg)
 
 [![Duplicate this Space](https://huggingface.co/datasets/huggingface/badges/resolve/main/duplicate-this-space-md.svg)](https://huggingface.co/spaces/itanvirt/hf_hermes?duplicate=true)
 
