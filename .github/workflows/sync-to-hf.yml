@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           lfs: false
 
       - name: Push to Hugging Face Space
@@ -26,4 +26,12 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git push "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" "HEAD:main" --force
+          # Push a single squashed commit of the current tree rather than full
+          # history: HF's pre-receive hook scans every blob ever pushed, so a
+          # full-history force-push keeps re-sending now-deleted binaries (it
+          # rejected this sync over a since-removed banner image still sitting
+          # in old commits). Squashing means only files present *now* are sent.
+          git checkout --orphan hf-sync-squash
+          git add -A
+          git commit -m "Sync from main"
+          git push "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}" "hf-sync-squash:main" --force
