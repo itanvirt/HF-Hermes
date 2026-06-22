@@ -144,7 +144,7 @@ else
         -H "Authorization: Bearer ${CLOUDFLARE_WORKERS_TOKEN}" \
         -H "Content-Type: application/json" \
         "$API/accounts/$ACCOUNT_ID/workers/scripts/$WORKER_NAME/schedules" \
-        -d '[{"cron":"0 */12 * * *"}]')
+        -d '[{"cron":"0 0 * * *"}]')
     cat /tmp/cloudflare-schedule.json >>"$LOG"
     echo >>"$LOG"
     if [ "$SCHEDULE_CODE" != "200" ]; then
@@ -152,7 +152,7 @@ else
         echo "[cloudflare] Worker schedule failed: $DETAIL" >>"$LOG"
         write_state "keepawake" "error" "$WORKER_NAME" "$TARGET" "schedule: $DETAIL"
     else
-        echo "[cloudflare] deployed Worker '$WORKER_NAME' pinging $TARGET every 12h." >>"$LOG"
+        echo "[cloudflare] deployed Worker '$WORKER_NAME' pinging $TARGET every 24h." >>"$LOG"
         write_state "keepawake" "configured" "$WORKER_NAME" "$TARGET" ""
     fi
 fi
