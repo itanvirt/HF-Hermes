@@ -7,4 +7,5 @@ venv/
 .hermes/
 data/
 node_modules/
+.cache/
 .DS_Store

@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>System · HuggingMes</title>
+  <style>
+    :root { color-scheme: dark; --bg:#08080f; --panel:#12111b; --panel2:#151421; --line:#26243a; --text:#f6f4ff; --muted:#7f7a9e; --soft:#b8b3d7; --good:#22c55e; --warn:#f5c542; --bad:#fb7185; --accent:#6557df; --accent2:#7c6cf2; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); font-size:13px; }
+    main { width:min(880px, calc(100% - 32px)); margin:0 auto; padding:36px 0 44px; }
+    header { text-align:center; margin-bottom:22px; }
+    h1 { margin:0; font-size:1.65rem; line-height:1; letter-spacing:0; }
+    .subtitle { margin-top:12px; color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.14em; font-weight:800; }
+    .admin-links { display:flex; gap:8px; margin:24px 0 20px; flex-wrap:wrap; }
+    .admin-links a { flex:1; min-width:90px; display:flex; align-items:center; justify-content:center; min-height:38px; border-radius:8px; background:var(--panel); border:1px solid var(--line); color:var(--soft); text-decoration:none; font-size:.82rem; font-weight:700; }
+    .admin-links a:hover, .admin-links a.active { background:var(--panel2); color:var(--text); }
+    .admin-links a.active { border-color:var(--accent); color:var(--text); }
+    .section-title { color:var(--muted); font-size:.68rem; letter-spacing:.16em; text-transform:uppercase; font-weight:850; margin:24px 0 10px; }
+    .section-title:first-of-type { margin-top:0; }
+    .overview { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; margin-bottom:10px; }
+    .tile { border:1px solid var(--line); background:var(--panel); border-radius:11px; padding:18px; min-height:96px; display:flex; flex-direction:column; gap:8px; }
+    .tile.ok { border-color:rgba(34,197,94,.22); }
+    .tile.warn { border-color:rgba(245,197,66,.24); }
+    .tile.off { border-color:rgba(251,113,133,.28); }
+    .tile-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .tile-title { color:var(--muted); font-size:.67rem; letter-spacing:.18em; text-transform:uppercase; font-weight:850; }
+    .tile-dot { width:7px; height:7px; border-radius:50%; background:var(--line); }
+    .tile.ok .tile-dot { background:var(--good); }
+    .tile.warn .tile-dot { background:var(--warn); }
+    .tile.off .tile-dot { background:var(--bad); }
+    .tile-value { font-size:1.12rem; font-weight:850; overflow-wrap:anywhere; }
+    .tile-detail { color:var(--soft); line-height:1.45; font-size:.83rem; }
+    .bar-track { height:7px; border-radius:5px; background:var(--line); overflow:hidden; margin-top:2px; }
+    .bar-fill { height:100%; background:var(--accent); }
+    .bar-fill.warn { background:var(--warn); }
+    .bar-fill.bad { background:var(--bad); }
+    .panel { border:1px solid var(--line); background:var(--panel); border-radius:11px; padding:18px; margin-bottom:14px; }
+    .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    button, .button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:38px; padding:0 16px; border-radius:8px; color:#fff; background:var(--accent); border:none; text-decoration:none; font-weight:850; font-size:.86rem; cursor:pointer; }
+    button:hover, .button:hover { background:var(--accent2); }
+    button.secondary, .button.secondary { color:var(--text); background:var(--panel2); border:1px solid var(--line); }
+    button.secondary:hover, .button.secondary:hover { background:#1c1a2b; }
+    button.danger { background:var(--bad); }
+    button.danger:hover { background:#ff8a98; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .badge { display:inline-flex; align-items:center; width:max-content; border:1px solid var(--line); border-radius:999px; padding:5px 10px; font-size:.72rem; font-weight:850; line-height:1; text-transform:uppercase; }
+    .badge.ok { color:var(--good); border-color:rgba(34,197,94,.34); background:rgba(34,197,94,.11); }
+    .badge.warn { color:var(--warn); border-color:rgba(245,197,66,.34); background:rgba(245,197,66,.11); }
+    .badge.off { color:var(--bad); border-color:rgba(251,113,133,.34); background:rgba(251,113,133,.11); }
+    .field { display:flex; flex-direction:column; gap:5px; flex:1; min-width:160px; }
+    .field label { color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; font-weight:800; }
+    input[type=text], input[type=password] { background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:0 10px; height:38px; font-size:.85rem; font-family:inherit; width:100%; }
+    .muted { color:var(--muted); }
+    .status-line { font-size:.78rem; color:var(--soft); margin-top:10px; min-height:1em; }
+    .status-line.error { color:var(--bad); }
+    @media (max-width: 700px) { .overview { grid-template-columns:1fr; } main { width:min(100% - 22px, 720px); padding-top:28px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>📊 System</h1>
+      <div class="subtitle">host resources &amp; gateway controls</div>
+    </header>
+    <div class="admin-links">
+      <a href="/">🏠 Home</a>
+      <a href="/files">📁 Files</a>
+      <a href="/host-logs">🪵 Host Logs</a>
+      <a href="/system" class="active">📊 System</a>
+    </div>
+
+    <div class="section-title">Host</div>
+    <section class="overview" id="overview-tiles">
+      <div class="tile muted">Loading…</div>
+    </section>
+
+    <div class="section-title">Gateway</div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;">
+        <div class="row">
+          <span class="muted">Status:</span>
+          <span class="badge" id="gateway-badge">…</span>
+          <span class="muted" id="gateway-pid"></span>
+        </div>
+        <div class="row">
+          <button type="button" class="secondary" id="gw-start">▶ Start</button>
+          <button type="button" class="secondary" id="gw-restart">⟳ Restart</button>
+          <button type="button" class="danger" id="gw-stop">■ Stop</button>
+        </div>
+      </div>
+      <div class="status-line" id="gw-status"></div>
+    </div>
+
+    <div class="section-title">Active Model</div>
+    <div class="panel">
+      <form id="model-form">
+        <div class="row" style="margin-bottom:12px;">
+          <div class="field">
+            <label>Model</label>
+            <input type="text" id="model-name" placeholder="e.g. gpt-4o-mini" autocomplete="off" />
+          </div>
+          <div class="field">
+            <label>Provider</label>
+            <input type="text" id="model-provider" placeholder="e.g. openai" autocomplete="off" />
+          </div>
+        </div>
+        <div class="row" style="margin-bottom:12px;">
+          <div class="field">
+            <label>API Key <span class="muted" id="key-hint"></span></label>
+            <input type="password" id="model-api-key" placeholder="Leave blank to keep current key" autocomplete="new-password" />
+          </div>
+        </div>
+        <div class="row">
+          <button type="submit">Save &amp; restart gateway</button>
+        </div>
+        <div class="status-line" id="model-status"></div>
+      </form>
+    </div>
+  </main>
+
+  <script>
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function fmtBytes(n) {
+      if (!n) return "0 B";
+      if (n < 1024) return n + " B";
+      const units = ["KB", "MB", "GB", "TB"];
+      let v = n;
+      let u = -1;
+      do { v /= 1024; u++; } while (v >= 1024 && u < units.length - 1);
+      return v.toFixed(v < 10 ? 1 : 0) + " " + units[u];
+    }
+
+    function fmtUptime(seconds) {
+      const d = Math.floor(seconds / 86400);
+      const h = Math.floor((seconds % 86400) / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const parts = [];
+      if (d) parts.push(d + "d");
+      if (h) parts.push(h + "h");
+      parts.push(m + "m");
+      return parts.join(" ");
+    }
+
+    function pctTone(pct) {
+      if (pct >= 90) return "bad";
+      if (pct >= 75) return "warn";
+      return "";
+    }
+
+    function renderTile({ title, value, detail, pct, tone }) {
+      return `
+        <div class="tile${tone ? " " + tone : ""}">
+          <div class="tile-head">
+            <span class="tile-title">${escapeHtml(title)}</span>
+            <span class="tile-dot"></span>
+          </div>
+          <div class="tile-value">${value}</div>
+          ${detail ? `<div class="tile-detail">${detail}</div>` : ""}
+          ${pct != null ? `<div class="bar-track"><div class="bar-fill ${pctTone(pct)}" style="width:${Math.min(100, pct)}%"></div></div>` : ""}
+        </div>`;
+    }
+
+    async function loadSystem() {
+      try {
+        const res = await fetch("/hm-api/system", { cache: "no-store" });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        const d = await res.json();
+        const tiles = [
+          renderTile({
+            title: "Memory",
+            value: `${d.memory.pct}%`,
+            detail: `${fmtBytes(d.memory.used)} / ${fmtBytes(d.memory.total)}`,
+            pct: d.memory.pct,
+            tone: pctTone(d.memory.pct),
+          }),
+          renderTile({
+            title: "Disk",
+            value: `${d.disk.pct}%`,
+            detail: `${fmtBytes(d.disk.used)} / ${fmtBytes(d.disk.total)}`,
+            pct: d.disk.pct,
+            tone: pctTone(d.disk.pct),
+          }),
+          renderTile({
+            title: "Load Average",
+            value: `${d.load["1m"]}`,
+            detail: `1m / 5m / 15m: ${d.load["1m"]} · ${d.load["5m"]} · ${d.load["15m"]} (${d.cpu_count} CPUs)`,
+          }),
+          renderTile({
+            title: "Uptime",
+            value: fmtUptime(d.uptime),
+            detail: `${escapeHtml(d.os)} (${escapeHtml(d.arch)})`,
+          }),
+          renderTile({
+            title: "Hermes",
+            value: escapeHtml(d.hermes_version),
+            detail: `Node ${escapeHtml(d.node_version)}`,
+          }),
+          renderTile({
+            title: "Hostname",
+            value: escapeHtml(d.hostname),
+            detail: "&nbsp;",
+          }),
+        ];
+        document.getElementById("overview-tiles").innerHTML = tiles.join("");
+
+        const badge = document.getElementById("gateway-badge");
+        const pidEl = document.getElementById("gateway-pid");
+        if (d.gateway_paused) {
+          badge.textContent = "Stopped";
+          badge.className = "badge off";
+          pidEl.textContent = "";
+        } else if (d.gateway_pid) {
+          badge.textContent = "Running";
+          badge.className = "badge ok";
+          pidEl.textContent = `PID ${d.gateway_pid}`;
+        } else {
+          badge.textContent = "Starting";
+          badge.className = "badge warn";
+          pidEl.textContent = "";
+        }
+      } catch (err) {
+        document.getElementById("overview-tiles").innerHTML = `<div class="tile off"><div class="tile-detail">${escapeHtml(err.message || String(err))}</div></div>`;
+      }
+    }
+
+    async function gatewayAction(action) {
+      const statusEl = document.getElementById("gw-status");
+      statusEl.classList.remove("error");
+      statusEl.textContent = "Working…";
+      ["gw-start", "gw-restart", "gw-stop"].forEach((id) => (document.getElementById(id).disabled = true));
+      try {
+        const res = await fetch(`/hm-api/gateway/${action}`, { method: "POST" });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        const data = await res.json();
+        statusEl.textContent = `Status: ${data.status}`;
+        setTimeout(loadSystem, 1500);
+      } catch (err) {
+        statusEl.textContent = err.message || String(err);
+        statusEl.classList.add("error");
+      } finally {
+        ["gw-start", "gw-restart", "gw-stop"].forEach((id) => (document.getElementById(id).disabled = false));
+      }
+    }
+
+    document.getElementById("gw-start").addEventListener("click", () => gatewayAction("start"));
+    document.getElementById("gw-restart").addEventListener("click", () => gatewayAction("restart"));
+    document.getElementById("gw-stop").addEventListener("click", () => gatewayAction("stop"));
+
+    async function loadModel() {
+      try {
+        const res = await fetch("/hm-api/model", { cache: "no-store" });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        const data = await res.json();
+        document.getElementById("model-name").value = data.model || "";
+        document.getElementById("model-provider").value = data.provider || "";
+        document.getElementById("key-hint").textContent = data.has_api_key ? "(key is set)" : "(no key set)";
+      } catch (err) {
+        document.getElementById("model-status").textContent = err.message || String(err);
+        document.getElementById("model-status").classList.add("error");
+      }
+    }
+
+    document.getElementById("model-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const statusEl = document.getElementById("model-status");
+      statusEl.classList.remove("error");
+      statusEl.textContent = "Saving…";
+      try {
+        const res = await fetch("/hm-api/model", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model: document.getElementById("model-name").value.trim(),
+            provider: document.getElementById("model-provider").value.trim(),
+            apiKey: document.getElementById("model-api-key").value,
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        statusEl.textContent = "Saved. Gateway is restarting…";
+        document.getElementById("model-api-key").value = "";
+        setTimeout(() => {
+          loadModel();
+          loadSystem();
+        }, 1500);
+      } catch (err) {
+        statusEl.textContent = err.message || String(err);
+        statusEl.classList.add("error");
+      }
+    });
+
+    loadSystem();
+    loadModel();
+    setInterval(loadSystem, 8000);
+  </script>
+</body>
+</html>

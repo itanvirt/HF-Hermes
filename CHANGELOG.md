@@ -5,6 +5,18 @@ Space.
 
 ## Unreleased
 
+- **Fresh start: rebuilt on the HuggingMes Node.js runtime.** Replaced the
+  Python/FastAPI app (`app/`, `supervisord.conf`, `scripts/`) with
+  HuggingMes's `start.sh` + `health-server.js` + `hermes-sync.py` as the
+  new foundation, and added Node.js to the base image. The landing page,
+  terminal, web UI, and ENV Builder are reimplemented on top of that base;
+  the chat/agent page, OpenAI-compatible `/v1` relay, and Telegram webhook
+  proxy now come from HuggingMes's existing proxied routes. New `lib/` +
+  `views/` modules add a **Files** browser, a **Host Logs** viewer, and a
+  **System** page (resource stats, gateway start/stop/restart, active-model
+  switcher) that didn't exist in HuggingMes, reachable from the dashboard's
+  new admin-links row. The bullets below predate this rewrite and describe
+  fixes to the old, now-removed `app/` codebase — kept for history.
 - **Backup no longer builds a tarball.** `app/backup.py` now mirrors
   `~/.hermes` into the backup dataset file-by-file via
   `huggingface_hub.upload_folder`/`snapshot_download` instead of building a

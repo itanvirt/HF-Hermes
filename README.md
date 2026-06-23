@@ -4,7 +4,7 @@ emoji: 🤖
 colorFrom: gray
 colorTo: green
 sdk: docker
-app_port: 7860
+app_port: 7861
 pinned: false
 license: mit
 short_description: Free, self-hosted AI agent with a Telegram bot — no code.
@@ -23,10 +23,9 @@ variables:
   CLOUDFLARE_KEEPALIVE_ENABLED: "true"
   CLOUDFLARE_ACCOUNT_ID: ""
   SYNC_INTERVAL: "600"
-  BACKUP_DATASET_NAME: "hermes-backup"
+  BACKUP_DATASET_NAME: "huggingmes-backup"
   GATEWAY_RESTART_DELAY: "5"
   GATEWAY_MAX_RESTARTS: "0"
-  GATEWAY_PORT: "8642"
 ---
 
 # Hermes Agent: run a free, self-hosted AI agent + Telegram bot on Hugging Face Spaces
@@ -42,8 +41,9 @@ configured through a web dashboard. Click **Duplicate this Space**, paste in
 a handful of secrets, and within a few minutes you have:
 
 - your own **AI agent you can talk to from Telegram**, running 24/7 on a free server
-- a **web dashboard** showing live status for the bot, model, backups, and uptime
-- an in-browser **terminal** and **agent CLI** — no SSH, no local install
+- a **web dashboard** showing live status for the gateway, model, backups, and uptime
+- an in-browser **terminal** and **agent chat UI** — no SSH, no local install
+- a **files browser**, **host log viewer**, and **system/model switcher** built into the dashboard
 - automatic **backups** of your agent's memory/state to a private Hugging Face dataset
 - automatic **keep-awake** so the free Space doesn't fall asleep, and a
   built-in fix for networks that block Telegram's API
@@ -66,6 +66,7 @@ for the very first time.
   - [Step 5: Talk to your agent](#step-5-talk-to-your-agent)
 - [Required secrets reference](#required-secrets-reference)
 - [Choosing an LLM provider](#choosing-an-llm-provider)
+- [Dashboard pages](#dashboard-pages)
 - [Optional settings](#optional-settings)
 - [Frequently asked questions](#frequently-asked-questions)
 - [Troubleshooting](#troubleshooting)
@@ -78,10 +79,13 @@ for the very first time.
 | Feature | Description |
 | --- | --- |
 | Dashboard | A landing page with live status cards for the gateway, model, runtime, Telegram, backups, and keep-awake. |
-| **Open Hermes Agent** | The Hermes CLI, running in your browser — chat with your agent without leaving the dashboard. |
-| **Open Terminal** | Full shell access inside the container — install packages, inspect logs, run commands. |
+| **Open Hermes Agent** | The Hermes chat UI, running in your browser — talk to your agent without leaving the dashboard. |
+| **Open Terminal** | Full shell access inside the container (JupyterLab terminal) — install packages, inspect logs, run commands. |
 | **ENV Builder** | View and edit your configuration without redeploying the Space. |
-| Telegram bot | Hermes's messaging gateway, talking to your bot via long-polling (no public webhook needed). |
+| **Files** | Browse, upload, download, and create folders anywhere under the agent's workspace. |
+| **Host Logs** | Tail the gateway, dashboard, terminal, health-server, and backup-sync logs from your browser. |
+| **System** | Live CPU/memory/disk stats, gateway start/stop/restart controls, and an active-model switcher. |
+| Telegram bot | Hermes's messaging gateway, talking to your bot via a webhook proxied through this Space (or long-polling, if you prefer). |
 | Automatic backups | Agent state mirrored file-by-file into a private Hugging Face dataset — no tarballs, no unbounded growth. |
 | Automatic keep-awake | A tiny Cloudflare Worker pings the Space once a day so the free tier doesn't sleep. |
 
@@ -133,8 +137,9 @@ new tab):
    [`@userinfobot`](https://t.me/userinfobot) on Telegram and it replies
    with your ID. (Comma-separate multiple IDs if you want more than one
    person to have access.)
-4. **`GATEWAY_TOKEN`** — a password you make up to protect your dashboard's
-   Terminal and ENV Builder. Generate a strong random one with:
+4. **`GATEWAY_TOKEN`** — a password you make up to protect your dashboard,
+   the Files/Logs/System pages, the Terminal, and the ENV Builder. Generate
+   a strong random one with:
    ```bash
    openssl rand -hex 24
    ```
@@ -144,7 +149,7 @@ new tab):
    and the API key for that provider. See
    [Choosing an LLM provider](#choosing-an-llm-provider) below — Google
    Gemini has a generous free tier and is the easiest first choice
-   (`gemini-2.5-flash`).
+   (`google/gemini-2.0-flash`).
 6. *(Recommended)* **`CLOUDFLARE_WORKERS_TOKEN`** — keeps the free Space
    awake and fixes Telegram connectivity on restrictive networks. Create one
    at [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens)
@@ -169,10 +174,10 @@ new tab):
    embedded.)
 3. The dashboard's status cards should turn green within a few seconds:
    **Gateway** (online), **Language Model** (ready), **Telegram**
-   (configured), **State Backup** (synced), **Keep Awake** (active).
+   (configured), **Backup** (synced), **Keep Awake** (active).
 4. If any card shows a warning, click **Open Terminal**, unlock with your
-   `GATEWAY_TOKEN`, and run `hermes config` or `hermes model` to finish
-   configuration by hand — or check `data/hermes-setup.log`.
+   `GATEWAY_TOKEN`, and check `tail -f /opt/data/logs/gateway.log` — or open
+   the **System** page from the dashboard for a live overview.
 
 ### Step 5: Talk to your agent
 
@@ -190,7 +195,7 @@ directly in your browser, no Telegram required.
 | `CLOUDFLARE_WORKERS_TOKEN` | Cloudflare API token with "Edit Cloudflare Workers" permission. The container uses this to auto-deploy a Worker on first boot that pings `/health` (keep-awake) and proxies Telegram's API. Also set `CLOUDFLARE_ACCOUNT_ID` (see optional variables below) for reliable deployment. |
 | `TELEGRAM_ALLOWED_USERS` | Comma-separated Telegram user IDs allowed to message the agent. |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token from `@BotFather`. |
-| `GATEWAY_TOKEN` | Shared secret protecting the terminal, ENV Builder, and the `/v1/*` LLM relay. Use a long random string. |
+| `GATEWAY_TOKEN` | Shared secret protecting the dashboard's admin pages, the terminal, the ENV Builder, and the `/v1/*` LLM relay. Use a long random string. |
 | `LLM_MODEL` | Model identifier. See provider table below. |
 | `LLM_API_KEY` | API key for the provider implied by `LLM_MODEL`. |
 
@@ -199,48 +204,63 @@ of secret names (without values).
 
 ## Choosing an LLM provider
 
-`LLM_MODEL` tells Hermes which model and provider to use; the prefix decides
-which env var your `LLM_API_KEY` gets mapped to internally:
+`LLM_MODEL` tells Hermes which model and provider to use; the prefix before
+the first `/` decides which provider env var your `LLM_API_KEY` gets mapped
+to internally:
 
 | Prefix | Example | Key secret |
 | --- | --- | --- |
-| `gemini-*` / `google/` | `gemini-2.5-flash` | `LLM_API_KEY` (→ `GOOGLE_API_KEY`) |
-| `gpt-*` / `openai/` | `gpt-4o` | `LLM_API_KEY` (→ `OPENAI_API_KEY`) |
-| `claude*` / `anthropic/` | `claude-sonnet-4-6` | `LLM_API_KEY` (→ `ANTHROPIC_API_KEY`) |
-| `openrouter/*` | `openrouter/google/gemini-2.5-flash` | `LLM_API_KEY` (→ `OPENROUTER_API_KEY`) |
-| `deepseek/*` | `deepseek/deepseek-chat` | `LLM_API_KEY` (→ `DEEPSEEK_API_KEY`) |
-| `xai/*` / `grok/` | `xai/grok-4` | `LLM_API_KEY` (→ `XAI_API_KEY`) |
-| `nvidia/*` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` | `LLM_API_KEY` (→ `NVIDIA_API_KEY`) |
-| `hf/*` / `huggingface/*` | `hf/Qwen/Qwen3-235B` | `LLM_API_KEY` (→ `HF_INFERENCE_TOKEN`) |
-| anything else | `mistral/mistral-large` | `LLM_API_KEY` (→ `OPENROUTER_API_KEY`) |
+| `google/` / `gemini/` | `google/gemini-2.0-flash` | `LLM_API_KEY` (→ `GOOGLE_API_KEY` / `GEMINI_API_KEY`) |
+| `openai/` | `openai/gpt-4o` | `LLM_API_KEY` (→ `OPENAI_API_KEY`) |
+| `anthropic/` | `anthropic/claude-sonnet-4-6` | `LLM_API_KEY` (→ `ANTHROPIC_API_KEY`) |
+| `openrouter/` | `openrouter/google/gemini-2.0-flash` | `LLM_API_KEY` (→ `OPENROUTER_API_KEY`) |
+| `deepseek/` | `deepseek/deepseek-chat` | `LLM_API_KEY` (→ `DEEPSEEK_API_KEY`) |
+| `xai/` / `grok/` | `xai/grok-4` | `LLM_API_KEY` (→ `XAI_API_KEY`) |
+| `nvidia/` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` | `LLM_API_KEY` (→ `NVIDIA_API_KEY`) |
+| `huggingface/` / `hf/` | `hf/Qwen/Qwen3-235B` | `LLM_API_KEY` (→ `HF_TOKEN`) |
+| anything else (custom endpoint) | set `CUSTOM_BASE_URL` too | `LLM_API_KEY` (→ `OPENAI_API_KEY`, OpenAI-compatible) |
 
 New to all this and just want something free and easy? Use
-`LLM_MODEL=gemini-2.5-flash` and get an API key from
+`LLM_MODEL=google/gemini-2.0-flash` and get an API key from
 [Google AI Studio](https://aistudio.google.com/apikey) — no credit card
 needed for the free tier.
 
 For API key rotation, set `OPENROUTER_API_KEYS`, `ANTHROPIC_API_KEYS`, `OPENAI_API_KEYS`,
-`GOOGLE_API_KEYS`, `DEEPSEEK_API_KEYS`, `XAI_API_KEYS`, or `NVIDIA_API_KEYS` to a
-comma-separated list — the first key is promoted to the active singular var automatically.
+`GOOGLE_API_KEYS`, `GEMINI_API_KEYS`, `DEEPSEEK_API_KEYS`, `XAI_API_KEYS`, or `NVIDIA_API_KEYS`
+to a comma-separated list — the first key is promoted to the active singular var automatically.
+
+## Dashboard pages
+
+The landing page links to everything else, all protected by the same
+`GATEWAY_TOKEN`-derived session:
+
+| Page | What it's for |
+| --- | --- |
+| **Open Hermes Agent** | The Hermes chat UI — talk to your agent in the browser. |
+| **Open Terminal** | A full JupyterLab terminal inside the container. |
+| **ENV Builder** | Edit Space configuration values without redeploying. |
+| **Files** | Browse `/opt/data` (the agent's persistent workspace): create folders, upload via drag-and-drop, download any file. |
+| **Host Logs** | Tail the gateway, dashboard, terminal, health-server, or backup-sync log, with search and auto-refresh. |
+| **System** | CPU load, memory, and disk usage; start/stop/restart the gateway; switch the active model and provider on the fly (writes straight to `config.yaml` and restarts the gateway — no redeploy). |
 
 ## Optional settings
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `STARTUP_APT_PACKAGES` | — | Space-separated apt packages to install on every boot. |
-| `STARTUP_PIP_PACKAGES` | — | Space-separated pip packages to install on every boot. |
-| `STARTUP_NPM_PACKAGES` | — | Space-separated npm packages to install on every boot. |
-| `STARTUP_RUN` | — | Bash commands to run on every boot (use `STARTUP_RUN_BASE64` for multi-line). |
-| `STARTUP_CAPTURE_DISABLE` | — | Set to `1` to disable the Terminal's auto-capture wrappers (apt/pip/npm/hermes installs are normally auto-appended to `data/startup.sh` for replay on next boot). |
-| `SYNC_INTERVAL` | `600` | Backup check frequency in seconds. Files are only uploaded when something actually changed since the last check (cheap metadata check first, full content hash to confirm). |
-| `BACKUP_DATASET_NAME` | `hermes-backup` | Dataset name for backups (owner is auto-detected from `HF_TOKEN`). |
-| `SYNC_MAX_FILE_BYTES` | `52428800` (50MB) | Skip any single file larger than this when backing up, so one oversized cache/log file can't bloat every backup. |
-| `CLOUDFLARE_ACCOUNT_ID` | — | Your Cloudflare account ID (Cloudflare dashboard → Workers & Pages → right sidebar). The container will try to auto-detect it from your token, but setting it explicitly is more reliable if your token can see multiple accounts. |
-| `CLOUDFLARE_KEEPALIVE_ENABLED` | `true` | Set to `false` to deploy the Worker (for Telegram proxy) without the keep-awake cron. |
+| `HUGGINGMES_APT_PACKAGES` | — | Space-separated apt packages to install on every boot. |
+| `HUGGINGMES_PIP_PACKAGES` | — | Space-separated pip packages to install on every boot. |
+| `HUGGINGMES_NPM_PACKAGES` | — | Space-separated npm packages to install globally on every boot. |
+| `HUGGINGMES_RUN` | — | Bash to run on every boot before the gateway launches. Supports a `base64:` prefix for quote-heavy scripts. |
+| `SYNC_INTERVAL` | `600` | Backup check frequency in seconds. Files are only uploaded when something actually changed since the last check. |
+| `BACKUP_DATASET_NAME` | `huggingmes-backup` | Dataset name for backups (owner is auto-detected from `HF_TOKEN`). |
+| `CLOUDFLARE_ACCOUNT_ID` | — | Your Cloudflare account ID (Cloudflare dashboard → Workers & Pages → right sidebar). The container tries to auto-detect it from your token, but setting it explicitly is more reliable if your token can see multiple accounts. |
+| `CLOUDFLARE_KEEPALIVE_ENABLED` | `true` | Set to `false` to deploy the Worker (for the Telegram proxy) without the keep-awake cron. |
 | `GATEWAY_RESTART_DELAY` | `5` | Seconds to wait between gateway restarts. |
-| `GATEWAY_MAX_RESTARTS` | `0` | Max gateway restart attempts (0 = unlimited). |
-| `WEBHOOK_URL` | — | URL to POST to on each gateway restart (JSON body with `event` and `space`). |
-| `TELEGRAM_MODE` | — | Set to `webhook` to use inbound webhook delivery instead of long-polling. |
+| `GATEWAY_MAX_RESTARTS` | `0` | Max gateway restart attempts (`0` = unlimited). |
+| `WEBHOOK_URL` | — | URL to POST to when the gateway (re)starts (JSON body with `event`, `status`, `model`). |
+| `TELEGRAM_MODE` | `webhook` | Set to `polling` to use long-polling instead of an inbound webhook. |
+| `DEV_MODE` | `true` | Set to `false` to disable the in-browser Terminal entirely. |
+| `JUPYTER_TOKEN` | (= `GATEWAY_TOKEN`) | Separate password for the Terminal, if you want it different from `GATEWAY_TOKEN`. |
 
 ## Frequently asked questions
 
@@ -267,12 +287,12 @@ auto-flagged as abusive by Hugging Face.
 **Is my data private?**
 Your agent's state backs up to a **private** Hugging Face dataset under
 your own account, readable only by you. Secret files (`.env`, credentials)
-are explicitly excluded from every backup.
+are excluded from every backup unless you explicitly opt in.
 
 **Can I use a different LLM later?**
-Yes — change `LLM_MODEL`/`LLM_API_KEY` in Settings → Variables and secrets
-and restart the Space, or use the in-dashboard **ENV Builder**. No
-redeploy needed.
+Yes — open the **System** page on the dashboard and switch the model and
+provider there (no redeploy, just a gateway restart), or change
+`LLM_MODEL`/`LLM_API_KEY` in Settings → Variables and secrets.
 
 **Can more than one person use the bot?**
 Yes — add more comma-separated IDs to `TELEGRAM_ALLOWED_USERS`.
@@ -282,29 +302,28 @@ Yes — add more comma-separated IDs to `TELEGRAM_ALLOWED_USERS`.
 **Telegram bot not connecting / dashboard shows "Offline"**
 
 Some networks (including some Hugging Face Spaces) block outbound
-connections to Telegram's API, so long-polling never establishes even
-though everything is configured correctly. **Open Terminal** →
-`tail -n 60 /var/log/supervisor/gateway.log` would show `connect timed out`
-errors to `api.telegram.org` in that case.
+connections to Telegram's API, so webhook registration and replies never
+go through even though everything is configured correctly. Open the
+**Host Logs** page and check the **gateway** tab for `connect timed out`
+errors to `api.telegram.org`.
 
 Setting `CLOUDFLARE_WORKERS_TOKEN` fixes this automatically: the container
 reverse-proxies Telegram's API through your Cloudflare Worker, which isn't
 subject to the same restriction. The **Telegram** card on the dashboard
-shows "Long-polling via Cloudflare Worker proxy" once this is active.
+shows this is active once configured.
 
-If the Telegram card instead shows a proxy error, check
-`data/cloudflare-setup.log` — the most common cause is that your Cloudflare
+If the Telegram card instead shows a proxy error, check the **health**
+tab on the Host Logs page — the most common cause is that your Cloudflare
 account doesn't have a `workers.dev` subdomain yet. Claim one once at
 Cloudflare dashboard → Workers & Pages → "Set up a subdomain", then restart
 the Space.
 
-As a last resort, `TELEGRAM_MODE=webhook` switches the gateway to inbound
-delivery via `https://<this-space>.hf.space/telegram-webhook` instead of
-polling — but registering the webhook and sending replies are still
+As a last resort, `TELEGRAM_MODE=polling` switches the gateway to
+long-polling instead of an inbound webhook — but polling still makes
 outbound calls to Telegram's API, so this only helps if the Cloudflare
 proxy above isn't an option.
 
-**Login doesn't stick on the Terminal / ENV Builder**
+**Login doesn't stick on the dashboard / Terminal / ENV Builder**
 
 Open the Space in its own browser tab
 (`https://<owner>-<space>.hf.space`), not the embedded view on
@@ -314,29 +333,33 @@ page detects this and redirects you automatically; if it can't, use the
 
 **A status card shows a warning after first boot**
 
-Click **Open Terminal**, unlock with your `GATEWAY_TOKEN`, and run
-`hermes config` or `hermes model` to finish configuration interactively, or
-check `data/hermes-setup.log` for what failed.
+Open the **System** page for a live readout of CPU/memory/disk and the
+gateway's running state, or the **Host Logs** page (gateway/dashboard
+tabs) to see exactly what failed.
 
 ## How backups work
 
 Every `SYNC_INTERVAL` seconds (default 600 = 10 minutes), the Space checks
-whether anything in `~/.hermes` changed since the last check (a cheap
-metadata check first, a full content hash to confirm) and, only if so,
-mirrors the changed files into a private dataset
-`<your-hf-username>/hermes-backup` — one file per file, no tarball, so the
-dataset's size stays bounded to the size of `~/.hermes` itself instead of
-growing with every sync. Secret files (`.env`, credentials) are always
-excluded. Override the dataset name with `BACKUP_DATASET_NAME`.
+whether anything in the agent's workspace changed since the last check (a
+cheap metadata check first, a full content hash to confirm) and, only if
+so, mirrors the changed files into a private dataset
+`<your-hf-username>/<BACKUP_DATASET_NAME>` — one file per file, no tarball,
+so the dataset's size stays bounded to the size of the workspace itself
+instead of growing with every sync. Secret files are excluded by default.
+Override the dataset name with `BACKUP_DATASET_NAME`.
 
 ## Repository layout
 
 ```
-Dockerfile                 Container image (Hermes Agent + dashboard app)
-supervisord.conf           Runs the web app and the Hermes gateway
-app/                        FastAPI dashboard, gateway proxy, terminal, ENV Builder, backups
-scripts/                    Install + runtime configuration scripts
-cloudflare/                 Manual/advanced Cloudflare Worker (Telegram webhook proxy, keep-awake fallback)
+Dockerfile                 Container image (Hermes Agent base + HuggingMes runtime)
+start.sh                   Boot script: config build, backup restore, process supervision
+health-server.js           Public-facing Node server: dashboard, auth, proxying, admin pages
+lib/                        Node backend for the Files / Host Logs / System pages
+views/                      HTML for the Files / Host Logs / System pages
+hermes-sync.py              Backup/restore to a private Hugging Face dataset
+cloudflare-proxy-setup.py   Deploys a Cloudflare Worker that proxies Telegram's API
+cloudflare-keepalive-setup.py  Deploys the keep-awake cron Worker
+env-builder.html/.js        In-browser configuration editor
 .github/workflows/          Sync to Hugging Face
 ```
 

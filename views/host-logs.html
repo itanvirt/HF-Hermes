@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Host Logs · HuggingMes</title>
+  <style>
+    :root { color-scheme: dark; --bg:#08080f; --panel:#12111b; --panel2:#151421; --line:#26243a; --text:#f6f4ff; --muted:#7f7a9e; --soft:#b8b3d7; --good:#22c55e; --warn:#f5c542; --bad:#fb7185; --accent:#6557df; --accent2:#7c6cf2; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); font-size:13px; }
+    main { width:min(960px, calc(100% - 32px)); margin:0 auto; padding:36px 0 44px; }
+    header { text-align:center; margin-bottom:22px; }
+    h1 { margin:0; font-size:1.65rem; line-height:1; letter-spacing:0; }
+    .subtitle { margin-top:12px; color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.14em; font-weight:800; }
+    .admin-links { display:flex; gap:8px; margin:24px 0 20px; flex-wrap:wrap; }
+    .admin-links a { flex:1; min-width:90px; display:flex; align-items:center; justify-content:center; min-height:38px; border-radius:8px; background:var(--panel); border:1px solid var(--line); color:var(--soft); text-decoration:none; font-size:.82rem; font-weight:700; }
+    .admin-links a:hover, .admin-links a.active { background:var(--panel2); color:var(--text); }
+    .admin-links a.active { border-color:var(--accent); color:var(--text); }
+    .panel { border:1px solid var(--line); background:var(--panel); border-radius:11px; padding:18px; }
+    .tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+    .tab { padding:0 14px; min-height:34px; display:flex; align-items:center; border-radius:8px; background:var(--panel2); border:1px solid var(--line); color:var(--soft); font-size:.8rem; font-weight:700; cursor:pointer; }
+    .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+    .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .toolbar input[type=text] { flex:1; min-width:140px; background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:0 10px; height:34px; font-size:.85rem; font-family:inherit; }
+    select { background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:0 10px; height:34px; font-size:.82rem; font-family:inherit; }
+    label.toggle { display:flex; align-items:center; gap:6px; color:var(--soft); font-size:.8rem; user-select:none; cursor:pointer; }
+    button, .button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:34px; padding:0 14px; border-radius:8px; color:#fff; background:var(--accent); border:none; text-decoration:none; font-weight:800; font-size:.82rem; cursor:pointer; }
+    button:hover, .button:hover { background:var(--accent2); }
+    button.secondary, .button.secondary { color:var(--text); background:var(--panel2); border:1px solid var(--line); }
+    button.secondary:hover, .button.secondary:hover { background:#1c1a2b; }
+    pre#log-output { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; background:#0d0d0d; border:1px solid var(--line); border-radius:7px; padding:14px; color:var(--soft); font-size:.78rem; line-height:1.5; height:520px; overflow-y:auto; font-family:"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
+    pre#log-output mark { background:rgba(245,197,66,.32); color:var(--text); border-radius:3px; }
+    .meta-line { display:flex; justify-content:space-between; gap:10px; color:var(--muted); font-size:.74rem; margin-top:8px; }
+    .meta-line .err { color:var(--bad); }
+    @media (max-width: 700px) { main { width:min(100% - 22px, 720px); padding-top:28px; } pre#log-output { height:420px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>🪵 Host Logs</h1>
+      <div class="subtitle">tail of $HERMES_HOME/logs/*.log</div>
+    </header>
+    <div class="admin-links">
+      <a href="/">🏠 Home</a>
+      <a href="/files">📁 Files</a>
+      <a href="/host-logs" class="active">🪵 Host Logs</a>
+      <a href="/system">📊 System</a>
+    </div>
+
+    <div class="panel">
+      <div class="tabs" id="tabs"></div>
+      <div class="toolbar">
+        <input type="text" id="search-box" placeholder="Filter lines…" />
+        <select id="lines-select">
+          <option value="200">200 lines</option>
+          <option value="500">500 lines</option>
+          <option value="1000">1000 lines</option>
+          <option value="2000">2000 lines</option>
+        </select>
+        <label class="toggle"><input type="checkbox" id="auto-refresh" /> Auto-refresh</label>
+        <button type="button" class="secondary" id="refresh-btn">⟳ Refresh</button>
+        <a class="button secondary" id="download-link" download>⬇ Download</a>
+      </div>
+      <pre id="log-output">Loading…</pre>
+      <div class="meta-line">
+        <span id="meta-left"></span>
+        <span id="meta-right"></span>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const TABS = [
+      { key: "gateway", label: "Gateway" },
+      { key: "dashboard", label: "Dashboard" },
+      { key: "jupyter", label: "Jupyter" },
+      { key: "health", label: "Health" },
+      { key: "sync", label: "Sync" },
+    ];
+    let currentTab = "gateway";
+    let refreshTimer = null;
+    let lastContent = "";
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function renderTabs() {
+      const el = document.getElementById("tabs");
+      el.innerHTML = TABS.map(
+        (t) => `<div class="tab${t.key === currentTab ? " active" : ""}" data-tab="${t.key}">${t.label}</div>`,
+      ).join("");
+      el.querySelectorAll(".tab").forEach((tabEl) => {
+        tabEl.addEventListener("click", () => {
+          currentTab = tabEl.getAttribute("data-tab");
+          renderTabs();
+          loadLogs();
+        });
+      });
+    }
+
+    function applyFilter() {
+      const term = document.getElementById("search-box").value;
+      const out = document.getElementById("log-output");
+      if (!term) {
+        out.textContent = lastContent;
+        return;
+      }
+      const lower = term.toLowerCase();
+      const filtered = lastContent
+        .split("\n")
+        .filter((line) => line.toLowerCase().includes(lower))
+        .join("\n");
+      const escaped = escapeHtml(filtered);
+      const re = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+      out.innerHTML = escaped.replace(re, (m) => `<mark>${m}</mark>`);
+    }
+
+    async function loadLogs() {
+      const lines = document.getElementById("lines-select").value;
+      document.getElementById("download-link").href = `/hm-api/logs?file=${currentTab}&lines=${lines}`;
+      try {
+        const res = await fetch(`/hm-api/logs?file=${currentTab}&lines=${lines}`, { cache: "no-store" });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        const data = await res.json();
+        lastContent = data.content || "(empty)";
+        applyFilter();
+        document.getElementById("meta-left").textContent = `${data.total_lines} lines total${data.truncated ? " (file truncated to last 2MB)" : ""}`;
+        document.getElementById("meta-right").textContent = "Updated " + new Date().toLocaleTimeString();
+        const out = document.getElementById("log-output");
+        out.scrollTop = out.scrollHeight;
+      } catch (err) {
+        document.getElementById("meta-left").innerHTML = `<span class="err">${escapeHtml(err.message || String(err))}</span>`;
+      }
+    }
+
+    document.getElementById("refresh-btn").addEventListener("click", loadLogs);
+    document.getElementById("lines-select").addEventListener("change", loadLogs);
+    document.getElementById("search-box").addEventListener("input", applyFilter);
+    document.getElementById("auto-refresh").addEventListener("change", (e) => {
+      if (e.target.checked) {
+        refreshTimer = setInterval(loadLogs, 5000);
+      } else if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+      }
+    });
+
+    renderTabs();
+    loadLogs();
+  </script>
+</body>
+</html>

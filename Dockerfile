@@ -1,55 +1,127 @@
-# Hermes Agent - self-hosted free-tier build for Hugging Face Spaces
-FROM python:3.11-slim-bookworm
+# HuggingMes - Hermes Agent Gateway for Hugging Face Spaces
 
-# --- system dependencies -----------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl \
-        git \
-        ca-certificates \
-        bash \
-        build-essential \
-        ffmpeg \
-        procps \
-        nodejs \
-        npm \
-        supervisor \
-        && rm -rf /var/lib/apt/lists/*
-
-# --- non-root user (required by Hugging Face Docker Spaces) ------------
-RUN useradd -m -u 1000 user
-ENV HOME=/home/user \
-    PATH=/home/user/.local/bin:/home/user/.hermes/bin:$PATH
-
-WORKDIR /home/user/app
-
-# --- install Hermes Agent (official installer) --------------------------
-# Run as the unprivileged user so it installs into $HOME, and run it in
-# non-interactive mode so it doesn't block the build waiting on stdin.
-USER user
-ENV CI=1 \
-    NONINTERACTIVE=1 \
-    HERMES_NONINTERACTIVE=1
-COPY --chown=user:user scripts/install_hermes.sh /home/user/app/scripts/install_hermes.sh
-RUN bash /home/user/app/scripts/install_hermes.sh || \
-    echo "WARN: Hermes Agent install did not complete at build time; entrypoint will retry at startup."
-
-# --- python dependencies -------------------------------------------------
-COPY --chown=user:user requirements.txt /home/user/app/requirements.txt
-RUN pip install --no-cache-dir --user -r /home/user/app/requirements.txt
-
-# --- application code -----------------------------------------------------
-COPY --chown=user:user . /home/user/app
+ARG HERMES_AGENT_VERSION=latest
+FROM nousresearch/hermes-agent:${HERMES_AGENT_VERSION}
 
 USER root
-RUN chmod +x /home/user/app/scripts/*.sh && \
-    mkdir -p /home/user/.hermes /home/user/app/data /var/log/supervisor && \
-    chown -R user:user /home/user/.hermes /home/user/app/data /var/log/supervisor
 
-USER user
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    jq \
+    sudo \
+    python3 \
+    python3-venv \
+    python3-pip \
+    chromium \
+    dbus \
+    dbus-x11 \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libdrm2 \
+    libgbm1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libxkbcommon0 \
+    libx11-6 \
+    libxext6 \
+    libxfixes3 \
+    fonts-dejavu-core \
+    fonts-liberation \
+    fonts-noto-color-emoji \
+    && (apt-get install -y --no-install-recommends libasound2 2>/dev/null \
+        || apt-get install -y --no-install-recommends libasound2t64 2>/dev/null \
+        || true) \
+    && rm -rf /var/lib/apt/lists/* \
+    && uv pip install --python /opt/hermes/.venv/bin/python --no-cache-dir \
+        huggingface_hub \
+        hf_transfer \
+        "jupyterlab>=4.0,<5" \
+        "tornado>=6.4" \
+        "ipywidgets>=8.1" \
+    && printf 'hermes ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/hermes \
+    && chmod 0440 /etc/sudoers.d/hermes \
+    && /usr/sbin/visudo -cf /etc/sudoers.d/hermes
 
-EXPOSE 7860
+COPY --chown=hermes:hermes start.sh /opt/huggingmes/start.sh
+COPY --chown=hermes:hermes health-server.js /opt/huggingmes/health-server.js
+COPY --chown=hermes:hermes lib /opt/huggingmes/lib
+COPY --chown=hermes:hermes views /opt/huggingmes/views
+COPY --chown=hermes:hermes hermes-sync.py /opt/huggingmes/hermes-sync.py
+COPY --chown=hermes:hermes cloudflare-proxy-setup.py /opt/huggingmes/cloudflare-proxy-setup.py
+COPY --chown=hermes:hermes cloudflare-keepalive-setup.py /opt/huggingmes/cloudflare-keepalive-setup.py
+COPY --chown=hermes:hermes env-builder.html /opt/huggingmes/env-builder.html
+COPY --chown=hermes:hermes env-builder.js /opt/huggingmes/env-builder.js
 
-HEALTHCHECK --interval=60s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:7860/health || exit 1
+RUN chmod +x \
+    /opt/huggingmes/start.sh \
+    /opt/huggingmes/hermes-sync.py \
+    /opt/huggingmes/cloudflare-proxy-setup.py \
+    /opt/huggingmes/cloudflare-keepalive-setup.py
 
-ENTRYPOINT ["/home/user/app/scripts/entrypoint.sh"]
+# Patch kanban migration: wrap ALTER TABLE ADD COLUMN in try/except so a
+# persisted DB with the column already present doesn't crash the gateway.
+# Entire block wrapped in try/except — skips silently if Hermes fixes this
+# upstream or the file structure changes.
+RUN python3 - <<'PY'
+import sys
+try:
+    from pathlib import Path
+
+    p = Path("/opt/hermes/hermes_cli/kanban_db.py")
+    if not p.exists():
+        print("kanban patch: file not found, skipping")
+        sys.exit(0)
+
+    src = p.read_text(encoding="utf-8", errors="replace")
+    sentinel = "# huggingmes: idempotent-alter"
+    if sentinel in src:
+        print("kanban patch: already applied, skipping")
+        sys.exit(0)
+
+    old = (
+        '    conn.execute(\n'
+        '        "ALTER TABLE tasks ADD COLUMN consecutive_failures "\n'
+        '        "INTEGER NOT NULL DEFAULT 0"\n'
+        '    )'
+    )
+    new = (
+        f'    try:  {sentinel}\n'
+        '        conn.execute(\n'
+        '            "ALTER TABLE tasks ADD COLUMN consecutive_failures "\n'
+        '            "INTEGER NOT NULL DEFAULT 0"\n'
+        '        )\n'
+        '    except Exception:\n'
+        '        pass'
+    )
+
+    if old not in src:
+        print("kanban patch: pattern not found, may be fixed upstream, skipping")
+        sys.exit(0)
+
+    p.write_text(src.replace(old, new), encoding="utf-8")
+    print("kanban patch: applied")
+except Exception as e:
+    print(f"kanban patch: error ({e}), skipping", file=sys.stderr)
+PY
+
+# Ensure hermes CLI is discoverable in ALL shell types (login, interactive,
+# non-interactive). /etc/profile.d/ is sourced by login shells after /etc/profile
+# resets PATH, so this survives even full environment resets.
+RUN echo 'export PATH="/opt/hermes/.venv/bin:/opt/data/.local/bin:$PATH"' \
+    > /etc/profile.d/hermes-venv.sh
+
+ENV HERMES_HOME=/opt/data \
+    HUGGINGMES_APP_DIR=/opt/huggingmes \
+    HERMES_AGENT_VERSION=${HERMES_AGENT_VERSION} \
+    PYTHONUNBUFFERED=1 \
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+
+EXPOSE 7861
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \
+  CMD curl -fsS http://localhost:7861/health || exit 1
+
+CMD ["/opt/huggingmes/start.sh"]

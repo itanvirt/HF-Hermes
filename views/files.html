@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Files · HuggingMes</title>
+  <style>
+    :root { color-scheme: dark; --bg:#08080f; --panel:#12111b; --panel2:#151421; --line:#26243a; --text:#f6f4ff; --muted:#7f7a9e; --soft:#b8b3d7; --good:#22c55e; --warn:#f5c542; --bad:#fb7185; --accent:#6557df; --accent2:#7c6cf2; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); font-size:13px; }
+    main { width:min(880px, calc(100% - 32px)); margin:0 auto; padding:36px 0 44px; }
+    header { text-align:center; margin-bottom:22px; }
+    h1 { margin:0; font-size:1.65rem; line-height:1; letter-spacing:0; }
+    .subtitle { margin-top:12px; color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.14em; font-weight:800; }
+    .admin-links { display:flex; gap:8px; margin:24px 0 20px; flex-wrap:wrap; }
+    .admin-links a { flex:1; min-width:90px; display:flex; align-items:center; justify-content:center; min-height:38px; border-radius:8px; background:var(--panel); border:1px solid var(--line); color:var(--soft); text-decoration:none; font-size:.82rem; font-weight:700; }
+    .admin-links a:hover, .admin-links a.active { background:var(--panel2); color:var(--text); }
+    .admin-links a.active { border-color:var(--accent); color:var(--text); }
+    .panel { border:1px solid var(--line); background:var(--panel); border-radius:11px; padding:18px; margin-bottom:14px; }
+    .toolbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+    .breadcrumb { flex:1; min-width:160px; color:var(--soft); font-size:.85rem; overflow-wrap:anywhere; }
+    .breadcrumb a { color:var(--soft); text-decoration:none; }
+    .breadcrumb a:hover { color:var(--text); text-decoration:underline; }
+    .breadcrumb .sep { color:var(--muted); margin:0 4px; }
+    button, .button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:36px; padding:0 14px; border-radius:8px; color:#fff; background:var(--accent); border:none; text-decoration:none; font-weight:800; font-size:.82rem; cursor:pointer; }
+    button:hover, .button:hover { background:var(--accent2); }
+    button.secondary, .button.secondary { color:var(--text); background:var(--panel2); border:1px solid var(--line); }
+    button.secondary:hover, .button.secondary:hover { background:#1c1a2b; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    input[type=text] { background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:0 10px; height:36px; font-size:.85rem; font-family:inherit; }
+    table { width:100%; border-collapse:collapse; font-size:.85rem; }
+    th { text-align:left; color:var(--muted); font-size:.68rem; letter-spacing:.1em; text-transform:uppercase; font-weight:850; padding:8px 10px; border-bottom:1px solid var(--line); }
+    td { padding:9px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+    tr:last-child td { border-bottom:none; }
+    tr.dropzone-active td { background:rgba(101,87,223,.12); }
+    .name-cell { display:flex; align-items:center; gap:8px; }
+    .name-cell a { color:var(--text); text-decoration:none; font-weight:600; }
+    .name-cell a:hover { text-decoration:underline; }
+    .icon { width:16px; text-align:center; flex:none; }
+    .muted { color:var(--muted); }
+    .size-col, .mtime-col { color:var(--soft); white-space:nowrap; }
+    .actions-col { text-align:right; white-space:nowrap; }
+    .actions-col a, .actions-col button { font-size:.74rem; padding:0 10px; min-height:28px; }
+    .empty { color:var(--muted); text-align:center; padding:28px 0; }
+    .dropzone { border:1.5px dashed var(--line); border-radius:11px; padding:22px; text-align:center; color:var(--muted); margin-bottom:14px; transition:background .12s, border-color .12s; }
+    .dropzone.active { border-color:var(--accent); background:rgba(101,87,223,.08); color:var(--soft); }
+    .dropzone input[type=file] { display:none; }
+    .status-line { font-size:.78rem; color:var(--soft); margin-top:10px; min-height:1em; }
+    .status-line.error { color:var(--bad); }
+    .upload-row { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:6px 0; font-size:.8rem; color:var(--soft); }
+    .progress { flex:1; height:5px; border-radius:4px; background:var(--line); overflow:hidden; }
+    .progress > div { height:100%; background:var(--accent); width:0%; transition:width .15s; }
+    @media (max-width: 700px) { main { width:min(100% - 22px, 720px); padding-top:28px; } .size-col, .mtime-col { display:none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>📁 Files</h1>
+      <div class="subtitle">/opt/data workspace browser</div>
+    </header>
+    <div class="admin-links">
+      <a href="/">🏠 Home</a>
+      <a href="/files" class="active">📁 Files</a>
+      <a href="/host-logs">🪵 Host Logs</a>
+      <a href="/system">📊 System</a>
+    </div>
+
+    <div class="panel">
+      <div class="toolbar">
+        <div class="breadcrumb" id="breadcrumb"></div>
+        <button type="button" class="secondary" id="refresh-btn">⟳ Refresh</button>
+        <button type="button" class="secondary" id="mkdir-btn">+ New folder</button>
+      </div>
+
+      <div class="dropzone" id="dropzone">
+        Drag &amp; drop files here, or
+        <label class="button secondary" style="display:inline-flex; margin-left:4px;">
+          Choose files
+          <input type="file" id="file-input" multiple />
+        </label>
+        <div id="upload-list"></div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th class="size-col">Size</th>
+            <th class="mtime-col">Modified</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="file-rows"></tbody>
+      </table>
+      <div class="empty" id="empty-msg" style="display:none;">This folder is empty.</div>
+      <div class="status-line" id="status-line"></div>
+    </div>
+  </main>
+
+  <script>
+    let currentPath = "/";
+
+    function fmtSize(n) {
+      if (n < 1024) return n + " B";
+      const units = ["KB", "MB", "GB", "TB"];
+      let v = n;
+      let u = -1;
+      do { v /= 1024; u++; } while (v >= 1024 && u < units.length - 1);
+      return v.toFixed(v < 10 ? 1 : 0) + " " + units[u];
+    }
+
+    function fmtTime(unixSeconds) {
+      const d = new Date(unixSeconds * 1000);
+      if (isNaN(d)) return "";
+      return d.toLocaleString();
+    }
+
+    function setStatus(msg, isError) {
+      const el = document.getElementById("status-line");
+      el.textContent = msg || "";
+      el.classList.toggle("error", !!isError);
+    }
+
+    function renderBreadcrumb(path) {
+      const parts = path.split("/").filter(Boolean);
+      const crumb = document.getElementById("breadcrumb");
+      const segments = [`<a href="#" data-path="/">root</a>`];
+      let acc = "";
+      parts.forEach((part) => {
+        acc += "/" + part;
+        segments.push(`<a href="#" data-path="${escapeHtml(acc)}">${escapeHtml(part)}</a>`);
+      });
+      crumb.innerHTML = segments.join('<span class="sep">/</span>');
+      crumb.querySelectorAll("a").forEach((a) => {
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          loadDir(a.getAttribute("data-path"));
+        });
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    async function loadDir(path) {
+      setStatus("Loading…");
+      try {
+        const res = await fetch(`/hm-api/files/list?path=${encodeURIComponent(path)}`, { cache: "no-store" });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        const data = await res.json();
+        currentPath = data.path;
+        renderBreadcrumb(currentPath);
+        renderRows(data.items);
+        setStatus("");
+      } catch (err) {
+        setStatus(err.message || String(err), true);
+      }
+    }
+
+    function renderRows(items) {
+      const tbody = document.getElementById("file-rows");
+      const emptyMsg = document.getElementById("empty-msg");
+      tbody.innerHTML = "";
+      emptyMsg.style.display = items.length ? "none" : "block";
+      items.forEach((item) => {
+        const tr = document.createElement("tr");
+        const nameCell = document.createElement("td");
+        nameCell.className = "name-cell";
+        if (item.is_dir) {
+          nameCell.innerHTML = `<span class="icon">📁</span><a href="#" data-dir="${escapeHtml(item.path)}">${escapeHtml(item.name)}</a>`;
+        } else {
+          nameCell.innerHTML = `<span class="icon">📄</span><span>${escapeHtml(item.name)}</span>`;
+        }
+        const sizeCell = document.createElement("td");
+        sizeCell.className = "size-col";
+        sizeCell.textContent = item.is_dir ? "—" : fmtSize(item.size);
+        const mtimeCell = document.createElement("td");
+        mtimeCell.className = "mtime-col muted";
+        mtimeCell.textContent = fmtTime(item.mtime);
+        const actionsCell = document.createElement("td");
+        actionsCell.className = "actions-col";
+        if (!item.is_dir) {
+          const link = document.createElement("a");
+          link.className = "button secondary";
+          link.textContent = "Download";
+          link.href = `/hm-api/files/download?path=${encodeURIComponent(item.path)}`;
+          actionsCell.appendChild(link);
+        }
+        tr.appendChild(nameCell);
+        tr.appendChild(sizeCell);
+        tr.appendChild(mtimeCell);
+        tr.appendChild(actionsCell);
+        tbody.appendChild(tr);
+      });
+      tbody.querySelectorAll("a[data-dir]").forEach((a) => {
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          loadDir(a.getAttribute("data-dir"));
+        });
+      });
+    }
+
+    document.getElementById("refresh-btn").addEventListener("click", () => loadDir(currentPath));
+
+    document.getElementById("mkdir-btn").addEventListener("click", async () => {
+      const name = prompt("New folder name:");
+      if (!name) return;
+      try {
+        const res = await fetch("/hm-api/files/mkdir", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path: currentPath, name }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+        loadDir(currentPath);
+      } catch (err) {
+        setStatus(err.message || String(err), true);
+      }
+    });
+
+    function uploadFile(file) {
+      const row = document.createElement("div");
+      row.className = "upload-row";
+      row.innerHTML = `<span>${escapeHtml(file.name)}</span><div class="progress"><div></div></div><span class="pct">0%</span>`;
+      document.getElementById("upload-list").appendChild(row);
+      const bar = row.querySelector(".progress > div");
+      const pct = row.querySelector(".pct");
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/hm-api/files/upload?path=${encodeURIComponent(currentPath)}&name=${encodeURIComponent(file.name)}`);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const p = Math.round((e.loaded / e.total) * 100);
+          bar.style.width = p + "%";
+          pct.textContent = p + "%";
+        }
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          pct.textContent = "Done";
+          setTimeout(() => row.remove(), 1500);
+          loadDir(currentPath);
+        } else {
+          pct.textContent = "Failed";
+          row.classList.add("error");
+        }
+      };
+      xhr.onerror = () => {
+        pct.textContent = "Failed";
+      };
+      xhr.send(file);
+    }
+
+    document.getElementById("file-input").addEventListener("change", (e) => {
+      Array.from(e.target.files).forEach(uploadFile);
+      e.target.value = "";
+    });
+
+    const dropzone = document.getElementById("dropzone");
+    ["dragenter", "dragover"].forEach((evt) =>
+      dropzone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropzone.classList.add("active");
+      }),
+    );
+    ["dragleave", "drop"].forEach((evt) =>
+      dropzone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        dropzone.classList.remove("active");
+      }),
+    );
+    dropzone.addEventListener("drop", (e) => {
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (files) Array.from(files).forEach(uploadFile);
+    });
+
+    loadDir("/");
+  </script>
+</body>
+</html>
