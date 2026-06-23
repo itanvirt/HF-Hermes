@@ -5,6 +5,13 @@ Space.
 
 ## Unreleased
 
+- **Backup dataset wasn't actually an exact mirror.** `hermes-sync.py`'s
+  `upload_folder()` call had no `delete_patterns`, so it only ever added or
+  updated files — anything removed locally (including legacy `.tar.gz`
+  artifacts left over from the old, now-removed tarball-based backup scheme)
+  stayed in the dataset forever. Added `delete_patterns=["*"]` so the next
+  sync actually prunes the dataset down to match `~/.hermes` exactly, per
+  the behavior already documented in the README.
 - **Fresh start: rebuilt on the HuggingMes Node.js runtime.** Replaced the
   Python/FastAPI app (`app/`, `supervisord.conf`, `scripts/`) with
   HuggingMes's `start.sh` + `health-server.js` + `hermes-sync.py` as the

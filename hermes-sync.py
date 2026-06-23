@@ -278,6 +278,7 @@ def sync_once(last_fingerprint: str | None = None, last_marker: tuple[int, int, 
             token=HF_TOKEN,
             commit_message=f"HuggingMes sync [{hostname}] {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}",
             ignore_patterns=[".git/*", ".git"],
+            delete_patterns=["*"],
         )
     finally:
         shutil.rmtree(snapshot_dir, ignore_errors=True)
