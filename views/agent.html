@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chat · HuggingMes</title>
+  <style>
+    :root { color-scheme: dark; --bg:#08080f; --panel:#12111b; --panel2:#151421; --line:#26243a; --text:#f6f4ff; --muted:#7f7a9e; --soft:#b8b3d7; --good:#22c55e; --warn:#f5c542; --bad:#fb7185; --accent:#6557df; --accent2:#7c6cf2; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); font-size:13px; }
+    main { width:min(880px, calc(100% - 32px)); margin:0 auto; padding:36px 0 44px; }
+    header { text-align:center; margin-bottom:22px; }
+    h1 { margin:0; font-size:1.65rem; line-height:1; letter-spacing:0; }
+    .subtitle { margin-top:12px; color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.14em; font-weight:800; }
+    .admin-links { display:flex; gap:8px; margin:24px 0 8px; flex-wrap:wrap; }
+    .admin-links a { flex:1; min-width:90px; display:flex; align-items:center; justify-content:center; min-height:38px; border-radius:8px; background:var(--panel); border:1px solid var(--line); color:var(--soft); text-decoration:none; font-size:.82rem; font-weight:700; }
+    .admin-links a:hover, .admin-links a.active { background:var(--panel2); color:var(--text); }
+    .admin-links a.active { border-color:var(--accent); color:var(--text); }
+    .admin-links.secondary { margin:0 0 20px; }
+    .admin-links.secondary a { font-size:.76rem; opacity:.85; }
+    .panel { border:1px solid var(--line); background:var(--panel); border-radius:11px; padding:18px; margin-bottom:14px; }
+    .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .field { display:flex; flex-direction:column; gap:5px; flex:1; min-width:160px; }
+    .field label { color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; font-weight:800; }
+    input[type=text], textarea { background:var(--bg); border:1px solid var(--line); color:var(--text); border-radius:8px; padding:8px 10px; font-size:.85rem; font-family:inherit; width:100%; }
+    input[type=text] { height:38px; }
+    textarea { resize:vertical; }
+    details.settings summary { cursor:pointer; color:var(--soft); font-weight:700; font-size:.82rem; }
+    details.settings .row { margin-top:12px; }
+    button, .button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:38px; padding:0 16px; border-radius:8px; color:#fff; background:var(--accent); border:none; text-decoration:none; font-weight:850; font-size:.86rem; cursor:pointer; }
+    button:hover, .button:hover { background:var(--accent2); }
+    button.secondary, .button.secondary { color:var(--text); background:var(--panel2); border:1px solid var(--line); }
+    button.secondary:hover, .button.secondary:hover { background:#1c1a2b; }
+    button.danger { background:var(--bad); }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .chat-panel { padding:0; overflow:hidden; }
+    #chat-log { height:480px; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:12px; }
+    .bubble-row { display:flex; }
+    .bubble-row.user { justify-content:flex-end; }
+    .bubble { max-width:78%; padding:10px 13px; border-radius:12px; font-size:.88rem; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .bubble-row.user .bubble { background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
+    .bubble-row.assistant .bubble { background:var(--panel2); border:1px solid var(--line); color:var(--text); border-bottom-left-radius:4px; }
+    .bubble-row.system .bubble { background:transparent; border:1px dashed var(--line); color:var(--muted); font-style:italic; }
+    .empty-chat { color:var(--muted); text-align:center; margin:auto; padding:30px; }
+    .composer { display:flex; gap:8px; padding:14px; border-top:1px solid var(--line); }
+    .composer textarea { flex:1; min-height:44px; max-height:160px; }
+    .status-line { font-size:.78rem; color:var(--soft); margin-top:10px; min-height:1em; }
+    .status-line.error { color:var(--bad); }
+    .muted { color:var(--muted); }
+    @media (max-width: 700px) { main { width:min(100% - 22px, 720px); padding-top:28px; } #chat-log { height:60vh; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>💬 Chat</h1>
+      <div class="subtitle">talk to the gateway's active model</div>
+    </header>
+    <div class="admin-links">
+      <a href="/">🏠 Home</a>
+      <a href="/agent" class="active">💬 Chat</a>
+      <a href="/files">📁 Files</a>
+      <a href="/host-logs">🪵 Host Logs</a>
+      <a href="/system">📊 System</a>
+    </div>
+    <div class="admin-links secondary">
+      <a href="/env-builder">⚙️ ENV Builder</a>
+      <a href="/terminal/">💻 Terminal</a>
+      <a href="/app/">🪽 Hermes UI</a>
+    </div>
+
+    <div class="panel">
+      <details class="settings">
+        <summary>Model &amp; system prompt</summary>
+        <div class="row">
+          <div class="field">
+            <label>Model <span class="muted" id="active-model-hint"></span></label>
+            <input type="text" id="model-override" placeholder="Leave blank to use the active model" autocomplete="off" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>System prompt (optional)</label>
+            <textarea id="system-prompt" rows="3" placeholder="Leave blank to use the gateway's own default behavior"></textarea>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="panel chat-panel">
+      <div id="chat-log"><div class="empty-chat">No messages yet. Say hello.</div></div>
+      <div class="composer">
+        <textarea id="chat-input" placeholder="Message the model… (Enter to send, Shift+Enter for a new line)"></textarea>
+        <button type="button" id="send-btn">Send</button>
+      </div>
+    </div>
+    <div class="row" style="justify-content:space-between;">
+      <div class="status-line" id="chat-status"></div>
+      <button type="button" class="secondary danger" id="clear-btn">🗑 Clear chat</button>
+    </div>
+  </main>
+
+  <script>
+    const STORAGE_HISTORY = "huggingmes_agent_history";
+    const STORAGE_SYSTEM = "huggingmes_agent_system";
+    const STORAGE_MODEL = "huggingmes_agent_model";
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+
+    function loadHistory() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_HISTORY) || "[]"); } catch { return []; }
+    }
+    function saveHistory(history) {
+      localStorage.setItem(STORAGE_HISTORY, JSON.stringify(history));
+    }
+
+    let history = loadHistory();
+    document.getElementById("system-prompt").value = localStorage.getItem(STORAGE_SYSTEM) || "";
+    document.getElementById("model-override").value = localStorage.getItem(STORAGE_MODEL) || "";
+    document.getElementById("system-prompt").addEventListener("input", (e) => localStorage.setItem(STORAGE_SYSTEM, e.target.value));
+    document.getElementById("model-override").addEventListener("input", (e) => localStorage.setItem(STORAGE_MODEL, e.target.value));
+
+    async function loadActiveModel() {
+      try {
+        const res = await fetch("/hm-api/model", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("active-model-hint").textContent = data.model ? `(active: ${data.model})` : "";
+      } catch {
+        // best-effort only
+      }
+    }
+
+    function renderHistory() {
+      const log = document.getElementById("chat-log");
+      if (history.length === 0) {
+        log.innerHTML = `<div class="empty-chat">No messages yet. Say hello.</div>`;
+        return;
+      }
+      log.innerHTML = history
+        .map(
+          (m) =>
+            `<div class="bubble-row ${m.role}"><div class="bubble">${escapeHtml(m.content)}</div></div>`,
+        )
+        .join("");
+      log.scrollTop = log.scrollHeight;
+    }
+    renderHistory();
+    loadActiveModel();
+
+    function setStatus(msg, isError) {
+      const el = document.getElementById("chat-status");
+      el.textContent = msg || "";
+      el.classList.toggle("error", !!isError);
+    }
+
+    function appendBubble(role, content) {
+      const log = document.getElementById("chat-log");
+      if (history.length === 0) log.innerHTML = "";
+      const row = document.createElement("div");
+      row.className = `bubble-row ${role}`;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.textContent = content;
+      row.appendChild(bubble);
+      log.appendChild(row);
+      log.scrollTop = log.scrollHeight;
+      return bubble;
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById("chat-input");
+      const text = input.value.trim();
+      if (!text) return;
+      const sendBtn = document.getElementById("send-btn");
+      sendBtn.disabled = true;
+      setStatus("");
+
+      const systemPrompt = document.getElementById("system-prompt").value.trim();
+      const modelOverride = document.getElementById("model-override").value.trim();
+
+      history.push({ role: "user", content: text });
+      saveHistory(history);
+      appendBubble("user", text);
+      input.value = "";
+
+      const messages = systemPrompt
+        ? [{ role: "system", content: systemPrompt }, ...history]
+        : history;
+
+      const assistantBubble = appendBubble("assistant", "…");
+      let assistantText = "";
+
+      try {
+        const res = await fetch("/v1/chat/completions", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            model: modelOverride || undefined,
+            messages,
+            stream: true,
+          }),
+        });
+        if (!res.ok || !res.body) {
+          const text = await res.text().catch(() => "");
+          throw new Error(text || res.statusText);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop();
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith("data:")) continue;
+            const payload = trimmed.slice(5).trim();
+            if (payload === "[DONE]") continue;
+            try {
+              const json = JSON.parse(payload);
+              const delta = json.choices?.[0]?.delta?.content || "";
+              if (delta) {
+                assistantText += delta;
+                assistantBubble.textContent = assistantText;
+                document.getElementById("chat-log").scrollTop = document.getElementById("chat-log").scrollHeight;
+              }
+            } catch {
+              // ignore malformed SSE chunks
+            }
+          }
+        }
+        if (!assistantText) assistantText = "(no response)";
+        assistantBubble.textContent = assistantText;
+        history.push({ role: "assistant", content: assistantText });
+        saveHistory(history);
+      } catch (err) {
+        assistantBubble.textContent = `Error: ${err.message || err}`;
+        setStatus(err.message || String(err), true);
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    }
+
+    document.getElementById("send-btn").addEventListener("click", sendMessage);
+    document.getElementById("chat-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      if (!confirm("Clear this chat history?")) return;
+      history = [];
+      saveHistory(history);
+      renderHistory();
+    });
+  </script>
+</body>
+</html>

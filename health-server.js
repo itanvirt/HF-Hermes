@@ -700,6 +700,7 @@ function renderDashboard(data) {
       <a class="hero-action secondary" data-space-link="env-builder" href="/env-builder">⚙️ ENV Builder →</a>
     </div>
     <div class="admin-links">
+      <a data-space-link="agent" href="/agent">💬 Chat</a>
       <a data-space-link="files" href="/files">📁 Files</a>
       <a data-space-link="host-logs" href="/host-logs">🪵 Host Logs</a>
       <a data-space-link="system" href="/system">📊 System</a>
@@ -831,6 +832,13 @@ async function handleHmApi(req, res, pathname, parsedUrl) {
     return sendJson(res, 200, { ok: true });
   }
 
+  if (pathname === "/hm-api/env/apply" && req.method === "POST") {
+    const body = JSON.parse((await readRequestBody(req)) || "{}");
+    const { applied, skipped } = systemLib.applyEnvLive(body.fields || {});
+    if (applied.length > 0) systemLib.gatewayAction("restart");
+    return sendJson(res, 200, { ok: true, applied, skipped });
+  }
+
   sendJson(res, 404, { error: "not found" });
 }
 
@@ -943,7 +951,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (path === "/files" || path === "/host-logs" || path === "/system") {
+  if (path === "/agent" || path === "/files" || path === "/host-logs" || path === "/system") {
     if (!requireAuth(req, res)) return;
     const viewName = `${path.slice(1)}.html`;
     try {

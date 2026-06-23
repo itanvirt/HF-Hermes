@@ -830,6 +830,23 @@ body {
 
           <div class="pblock">
             <div class="pblock-head">
+              <span class="pblock-title">⚡ Apply Live</span>
+            </div>
+            <div class="pblock-body">
+              <div style="color:var(--text3); font-size:12px; line-height:1.5; margin-bottom:8px;">
+                Pushes <strong>model, provider, model API key, custom endpoint, and
+                notification-level</strong> fields straight into the running gateway's
+                config and restarts it — no Space restart needed. Everything else you've
+                selected (tokens, Telegram, Cloudflare, ports…) still needs a Space
+                restart with the secret set; this button leaves those alone.
+              </div>
+              <button id="applyLive" class="btn btn-amber" style="width:100%;">⚡ Apply to Running Gateway</button>
+              <div id="applyLiveStatus" style="font-size:12px; color:var(--text2); margin-top:8px; min-height:1.2em;"></div>
+            </div>
+          </div>
+
+          <div class="pblock">
+            <div class="pblock-head">
               <span class="pblock-title">📥 Import</span>
             </div>
             <div class="pblock-body">

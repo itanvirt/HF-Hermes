@@ -17,6 +17,19 @@ Space.
   switcher) that didn't exist in HuggingMes, reachable from the dashboard's
   new admin-links row. The bullets below predate this rewrite and describe
   fixes to the old, now-removed `app/` codebase — kept for history.
+- **Restored the old build's custom Chat UI, broad Files browser scope, and
+  added a live ENV apply.** A new `/agent` page (bubble chat, model/system
+  prompt override, full nav to every admin page plus Terminal/ENV
+  Builder/Hermes's own dashboard) talks to `/v1/chat/completions` over the
+  existing session-cookie auth — no token to paste in. The Files browser's
+  root broadened back from `HERMES_HOME` (`/opt/data` only) to `/opt`
+  (override with `FILES_ROOT`), matching the old build's `/home/user`-wide
+  scope. The ENV Builder gained an **⚡ Apply Live** button
+  (`lib/system.js#applyEnvLive`, `POST /hm-api/env/apply`) that writes
+  model/provider/API-key/custom-endpoint/notification-level fields straight
+  into `config.yaml` and restarts the gateway — no Space restart needed for
+  those; everything else (tokens, Telegram, Cloudflare, ports) still needs
+  one, since Hermes only reads those from process env at boot.
 - **Backup no longer builds a tarball.** `app/backup.py` now mirrors
   `~/.hermes` into the backup dataset file-by-file via
   `huggingface_hub.upload_folder`/`snapshot_download` instead of building a

@@ -815,4 +815,46 @@ $('applyBundle').onclick = () => {
 };
 $('copyBundle').onclick = () => copyText($('bundleOut').value);
 $('copyEnvLine').onclick = () => copyText($('envLineOut').value);
+
+// Fields the backend can write straight into the running gateway's
+// config.yaml (lib/system.js#applyEnvLive) and pick up on a gateway-only
+// restart. Everything else in FIELDS needs a full Space restart with the
+// secret set, since Hermes only reads it from process env at boot.
+const LIVE_KEYS = [
+  'LLM_MODEL', 'HERMES_INFERENCE_PROVIDER', 'LLM_API_KEY',
+  'CUSTOM_BASE_URL', 'CUSTOM_API_KEY', 'CUSTOM_PROVIDER',
+  'CUSTOM_MODEL_CONTEXT_LENGTH', 'CUSTOM_MODEL_MAX_TOKENS',
+  'HERMES_BACKGROUND_NOTIFICATIONS',
+];
+
+$('applyLive').onclick = async () => {
+  const btn = $('applyLive');
+  const status = $('applyLiveStatus');
+  const all = collect();
+  const fields = {};
+  LIVE_KEYS.forEach(k => { if (all[k]) fields[k] = all[k]; });
+
+  if (Object.keys(fields).length === 0) {
+    status.textContent = 'No live-appliable fields are selected (need model/provider/key/custom/notification fields).';
+    return;
+  }
+
+  btn.disabled = true;
+  status.textContent = 'Applying…';
+  try {
+    const res = await fetch('/hm-api/env/apply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fields }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText);
+    const data = await res.json();
+    status.textContent = `Applied ${data.applied.join(', ')}. Gateway is restarting…`;
+    showToast('Applied live ✓');
+  } catch (e) {
+    status.textContent = e.message || String(e);
+  } finally {
+    btn.disabled = false;
+  }
+};
 $('copyJson').onclick = () => copyText(JSON.stringify(collect(), null, 2));
